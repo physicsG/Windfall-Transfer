@@ -45,16 +45,31 @@ class SP_DEVINFO_DATA(ctypes.Structure):
 
 
 class SP_DEVINSTALL_PARAMS_W(ctypes.Structure):
-    _fields_ = [("cbSize", wt.DWORD), ("Flags", wt.DWORD), ("FlagsEx", wt.DWORD), ("hwndParent", wt.HWND),
-                ("InstallMsgHandler", ctypes.c_void_p), ("InstallMsgHandlerContext", ctypes.c_void_p),
-                ("FileQueue", ctypes.c_void_p), ("ClassInstallReserved", ctypes.c_size_t), ("Reserved", wt.DWORD),
-                ("DriverPath", ctypes.c_wchar * 260)]
+    _fields_ = [
+        ("cbSize", wt.DWORD),
+        ("Flags", wt.DWORD),
+        ("FlagsEx", wt.DWORD),
+        ("hwndParent", wt.HWND),
+        ("InstallMsgHandler", ctypes.c_void_p),
+        ("InstallMsgHandlerContext", ctypes.c_void_p),
+        ("FileQueue", ctypes.c_void_p),
+        ("ClassInstallReserved", ctypes.c_size_t),
+        ("Reserved", wt.DWORD),
+        ("DriverPath", ctypes.c_wchar * 260),
+    ]
 
 
 class SP_DRVINFO_DATA_V2_W(ctypes.Structure):
-    _fields_ = [("cbSize", wt.DWORD), ("DriverType", wt.DWORD), ("Reserved", ctypes.c_size_t),
-                ("Description", ctypes.c_wchar * 256), ("MfgName", ctypes.c_wchar * 256),
-                ("ProviderName", ctypes.c_wchar * 256), ("DriverDate", wt.FILETIME), ("DriverVersion", ctypes.c_uint64)]
+    _fields_ = [
+        ("cbSize", wt.DWORD),
+        ("DriverType", wt.DWORD),
+        ("Reserved", ctypes.c_size_t),
+        ("Description", ctypes.c_wchar * 256),
+        ("MfgName", ctypes.c_wchar * 256),
+        ("ProviderName", ctypes.c_wchar * 256),
+        ("DriverDate", wt.FILETIME),
+        ("DriverVersion", ctypes.c_uint64),
+    ]
 
 
 class DEVPROPKEY(ctypes.Structure):
@@ -82,49 +97,123 @@ _GetClassDevs = _fn(_setupapi, "SetupDiGetClassDevsW", ctypes.c_void_p, ctypes.c
 _CreateList = _fn(_setupapi, "SetupDiCreateDeviceInfoList", ctypes.c_void_p, ctypes.c_void_p, wt.HWND)
 _DestroyList = _fn(_setupapi, "SetupDiDestroyDeviceInfoList", wt.BOOL, ctypes.c_void_p)
 _EnumDeviceInfo = _fn(_setupapi, "SetupDiEnumDeviceInfo", wt.BOOL, ctypes.c_void_p, wt.DWORD, _DEV)
-_OpenDeviceInfo = _fn(_setupapi, "SetupDiOpenDeviceInfoW", wt.BOOL, ctypes.c_void_p, wt.LPCWSTR, wt.HWND, wt.DWORD,
-                      _DEV)
-_GetInstanceId = _fn(_setupapi, "SetupDiGetDeviceInstanceIdW", wt.BOOL, ctypes.c_void_p, _DEV, wt.LPWSTR, wt.DWORD,
-                     ctypes.POINTER(wt.DWORD))
-_GetRegistryProperty = _fn(_setupapi, "SetupDiGetDeviceRegistryPropertyW", wt.BOOL, ctypes.c_void_p, _DEV, wt.DWORD,
-                           ctypes.POINTER(wt.DWORD), ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD))
-_GetDeviceProperty = _fn(_setupapi, "SetupDiGetDevicePropertyW", wt.BOOL, ctypes.c_void_p, _DEV,
-                         ctypes.POINTER(DEVPROPKEY), ctypes.POINTER(wt.ULONG), ctypes.c_void_p, wt.DWORD,
-                         ctypes.POINTER(wt.DWORD), wt.DWORD)
-_GetInstallParams = _fn(_setupapi, "SetupDiGetDeviceInstallParamsW", wt.BOOL, ctypes.c_void_p, _DEV,
-                        ctypes.POINTER(SP_DEVINSTALL_PARAMS_W))
-_SetInstallParams = _fn(_setupapi, "SetupDiSetDeviceInstallParamsW", wt.BOOL, ctypes.c_void_p, _DEV,
-                        ctypes.POINTER(SP_DEVINSTALL_PARAMS_W))
+_OpenDeviceInfo = _fn(
+    _setupapi, "SetupDiOpenDeviceInfoW", wt.BOOL, ctypes.c_void_p, wt.LPCWSTR, wt.HWND, wt.DWORD, _DEV
+)
+_GetInstanceId = _fn(
+    _setupapi,
+    "SetupDiGetDeviceInstanceIdW",
+    wt.BOOL,
+    ctypes.c_void_p,
+    _DEV,
+    wt.LPWSTR,
+    wt.DWORD,
+    ctypes.POINTER(wt.DWORD),
+)
+_GetRegistryProperty = _fn(
+    _setupapi,
+    "SetupDiGetDeviceRegistryPropertyW",
+    wt.BOOL,
+    ctypes.c_void_p,
+    _DEV,
+    wt.DWORD,
+    ctypes.POINTER(wt.DWORD),
+    ctypes.c_void_p,
+    wt.DWORD,
+    ctypes.POINTER(wt.DWORD),
+)
+_GetDeviceProperty = _fn(
+    _setupapi,
+    "SetupDiGetDevicePropertyW",
+    wt.BOOL,
+    ctypes.c_void_p,
+    _DEV,
+    ctypes.POINTER(DEVPROPKEY),
+    ctypes.POINTER(wt.ULONG),
+    ctypes.c_void_p,
+    wt.DWORD,
+    ctypes.POINTER(wt.DWORD),
+    wt.DWORD,
+)
+_GetInstallParams = _fn(
+    _setupapi, "SetupDiGetDeviceInstallParamsW", wt.BOOL, ctypes.c_void_p, _DEV, ctypes.POINTER(SP_DEVINSTALL_PARAMS_W)
+)
+_SetInstallParams = _fn(
+    _setupapi, "SetupDiSetDeviceInstallParamsW", wt.BOOL, ctypes.c_void_p, _DEV, ctypes.POINTER(SP_DEVINSTALL_PARAMS_W)
+)
 _BuildDriverList = _fn(_setupapi, "SetupDiBuildDriverInfoList", wt.BOOL, ctypes.c_void_p, _DEV, wt.DWORD)
-_EnumDriverInfo = _fn(_setupapi, "SetupDiEnumDriverInfoW", wt.BOOL, ctypes.c_void_p, _DEV, wt.DWORD, wt.DWORD,
-                      ctypes.POINTER(SP_DRVINFO_DATA_V2_W))
-_SetSelectedDriver = _fn(_setupapi, "SetupDiSetSelectedDriverW", wt.BOOL, ctypes.c_void_p, _DEV,
-                         ctypes.POINTER(SP_DRVINFO_DATA_V2_W))
-_SetRegistryProperty = _fn(_setupapi, "SetupDiSetDeviceRegistryPropertyW", wt.BOOL, ctypes.c_void_p, _DEV, wt.DWORD,
-                           ctypes.c_void_p, wt.DWORD)
-_OpenDevRegKey = _fn(_setupapi, "SetupDiOpenDevRegKey", wt.HKEY, ctypes.c_void_p, _DEV, wt.DWORD, wt.DWORD, wt.DWORD,
-                     wt.DWORD)
+_EnumDriverInfo = _fn(
+    _setupapi,
+    "SetupDiEnumDriverInfoW",
+    wt.BOOL,
+    ctypes.c_void_p,
+    _DEV,
+    wt.DWORD,
+    wt.DWORD,
+    ctypes.POINTER(SP_DRVINFO_DATA_V2_W),
+)
+_SetSelectedDriver = _fn(
+    _setupapi, "SetupDiSetSelectedDriverW", wt.BOOL, ctypes.c_void_p, _DEV, ctypes.POINTER(SP_DRVINFO_DATA_V2_W)
+)
+_SetRegistryProperty = _fn(
+    _setupapi, "SetupDiSetDeviceRegistryPropertyW", wt.BOOL, ctypes.c_void_p, _DEV, wt.DWORD, ctypes.c_void_p, wt.DWORD
+)
+_OpenDevRegKey = _fn(
+    _setupapi, "SetupDiOpenDevRegKey", wt.HKEY, ctypes.c_void_p, _DEV, wt.DWORD, wt.DWORD, wt.DWORD, wt.DWORD
+)
 _UninstallOEMInf = _fn(_setupapi, "SetupUninstallOEMInfW", wt.BOOL, wt.LPCWSTR, wt.DWORD, ctypes.c_void_p)
-_DiInstallDevice = _fn(_newdev, "DiInstallDevice", wt.BOOL, wt.HWND, ctypes.c_void_p, _DEV,
-                       ctypes.POINTER(SP_DRVINFO_DATA_V2_W), wt.DWORD, ctypes.POINTER(wt.BOOL))
-_DiUninstallDevice = _fn(_newdev, "DiUninstallDevice", wt.BOOL, wt.HWND, ctypes.c_void_p, _DEV, wt.DWORD,
-                         ctypes.POINTER(wt.BOOL))
-_GetDevNodeStatus = _fn(_cfgmgr32, "CM_Get_DevNode_Status", wt.DWORD, ctypes.POINTER(wt.ULONG),
-                        ctypes.POINTER(wt.ULONG), wt.DWORD, wt.ULONG)
+_DiInstallDevice = _fn(
+    _newdev,
+    "DiInstallDevice",
+    wt.BOOL,
+    wt.HWND,
+    ctypes.c_void_p,
+    _DEV,
+    ctypes.POINTER(SP_DRVINFO_DATA_V2_W),
+    wt.DWORD,
+    ctypes.POINTER(wt.BOOL),
+)
+_DiUninstallDevice = _fn(
+    _newdev, "DiUninstallDevice", wt.BOOL, wt.HWND, ctypes.c_void_p, _DEV, wt.DWORD, ctypes.POINTER(wt.BOOL)
+)
+_GetDevNodeStatus = _fn(
+    _cfgmgr32, "CM_Get_DevNode_Status", wt.DWORD, ctypes.POINTER(wt.ULONG), ctypes.POINTER(wt.ULONG), wt.DWORD, wt.ULONG
+)
 _LocateDevNode = _fn(_cfgmgr32, "CM_Locate_DevNodeW", wt.DWORD, ctypes.POINTER(wt.DWORD), wt.LPCWSTR, wt.ULONG)
 _ReenumerateDevNode = _fn(_cfgmgr32, "CM_Reenumerate_DevNode", wt.DWORD, wt.DWORD, wt.ULONG)
-_RegQueryValueEx = _fn(_advapi32, "RegQueryValueExW", wt.LONG, wt.HKEY, wt.LPCWSTR, ctypes.POINTER(wt.DWORD),
-                       ctypes.POINTER(wt.DWORD), ctypes.c_void_p, ctypes.POINTER(wt.DWORD))
-_RegSetValueEx = _fn(_advapi32, "RegSetValueExW", wt.LONG, wt.HKEY, wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p,
-                     wt.DWORD)
+_RegQueryValueEx = _fn(
+    _advapi32,
+    "RegQueryValueExW",
+    wt.LONG,
+    wt.HKEY,
+    wt.LPCWSTR,
+    ctypes.POINTER(wt.DWORD),
+    ctypes.POINTER(wt.DWORD),
+    ctypes.c_void_p,
+    ctypes.POINTER(wt.DWORD),
+)
+_RegSetValueEx = _fn(
+    _advapi32, "RegSetValueExW", wt.LONG, wt.HKEY, wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD
+)
 _RegCloseKey = _fn(_advapi32, "RegCloseKey", wt.LONG, wt.HKEY)
-_CertOpenStore = _fn(_crypt32, "CertOpenStore", ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, ctypes.c_void_p,
-                     wt.DWORD, ctypes.c_void_p)
+_CertOpenStore = _fn(
+    _crypt32, "CertOpenStore", ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, ctypes.c_void_p, wt.DWORD, ctypes.c_void_p
+)
 _CertCloseStore = _fn(_crypt32, "CertCloseStore", wt.BOOL, ctypes.c_void_p, wt.DWORD)
-_CertFind = _fn(_crypt32, "CertFindCertificateInStore", ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, wt.DWORD,
-                wt.DWORD, ctypes.c_void_p, ctypes.c_void_p)
-_CertGetNameString = _fn(_crypt32, "CertGetNameStringW", wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD,
-                         ctypes.c_void_p, wt.LPWSTR, wt.DWORD)
+_CertFind = _fn(
+    _crypt32,
+    "CertFindCertificateInStore",
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    wt.DWORD,
+    wt.DWORD,
+    wt.DWORD,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+_CertGetNameString = _fn(
+    _crypt32, "CertGetNameStringW", wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.LPWSTR, wt.DWORD
+)
 _CertDuplicate = _fn(_crypt32, "CertDuplicateCertificateContext", ctypes.c_void_p, ctypes.c_void_p)
 _CertDelete = _fn(_crypt32, "CertDeleteCertificateFromStore", wt.BOOL, ctypes.c_void_p)
 _CertFree = _fn(_crypt32, "CertFreeCertificateContext", wt.BOOL, ctypes.c_void_p)
@@ -145,8 +234,8 @@ class MacDevice:
     instance_id: str
     pid: int
     present: bool  # plugged in right now
-    service: str   # driver in use: "WinUSB" once set up, "usbccgp" before
-    name: str      # what the device calls itself ("Mac")
+    service: str  # driver in use: "WinUSB" once set up, "usbccgp" before
+    name: str  # what the device calls itself ("Mac")
 
     @property
     def ready(self):
@@ -175,8 +264,9 @@ def _registry_string(hset, dev, prop):
 def _device_property_string(hset, dev, key):
     buf = ctypes.create_unicode_buffer(512)
     kind = wt.ULONG()
-    ok = _GetDeviceProperty(hset, ctypes.byref(dev), ctypes.byref(key), ctypes.byref(kind), buf, ctypes.sizeof(buf),
-                            None, 0)
+    ok = _GetDeviceProperty(
+        hset, ctypes.byref(dev), ctypes.byref(key), ctypes.byref(kind), buf, ctypes.sizeof(buf), None, 0
+    )
     return buf.value if ok else ""
 
 
@@ -205,8 +295,9 @@ def find_macs():
             pid = int(match.group(1), 16)
             name = _device_property_string(hset, dev, DEVPKEY_Device_BusReportedDeviceDesc)
             if is_mac(pid, name):
-                macs.append(MacDevice(instance, pid, _present(dev.DevInst),
-                                      _registry_string(hset, dev, SPDRP_SERVICE), name))
+                macs.append(
+                    MacDevice(instance, pid, _present(dev.DevInst), _registry_string(hset, dev, SPDRP_SERVICE), name)
+                )
     finally:
         _DestroyList(hset)
     return macs
@@ -225,7 +316,7 @@ def _read_multi_sz(key, name):
     buf = ctypes.create_string_buffer(size.value)
     if _RegQueryValueEx(key, name, None, None, buf, ctypes.byref(size)):
         return []
-    return [part for part in buf.raw[:size.value].decode("utf-16-le").split("\0") if part]
+    return [part for part in buf.raw[: size.value].decode("utf-16-le").split("\0") if part]
 
 
 def _register_interface_guid(hset, dev):
@@ -312,8 +403,17 @@ def install_winusb(instance_id):
             driver = _winusb_driver(hset, dev)
             _check(_SetSelectedDriver(hset, ctypes.byref(dev), ctypes.byref(driver)), "select WinUSB")
             reboot = wt.BOOL()
-            _check(_DiInstallDevice(None, hset, ctypes.byref(dev), ctypes.byref(driver), DIIDFLAG_NOFINISHINSTALLUI,
-                                    ctypes.byref(reboot)), "install WinUSB")
+            _check(
+                _DiInstallDevice(
+                    None,
+                    hset,
+                    ctypes.byref(dev),
+                    ctypes.byref(driver),
+                    DIIDFLAG_NOFINISHINSTALLUI,
+                    ctypes.byref(reboot),
+                ),
+                "install WinUSB",
+            )
             return bool(reboot.value)
         finally:
             _DestroyList(hset)
@@ -382,8 +482,9 @@ def _zadig_certificates(store_name, delete):
     matched, context = [], None
     try:
         while True:
-            context = _CertFind(store, ENCODING, 0, CERT_FIND_SUBJECT_STR_W, ctypes.c_wchar_p("libwdi autogenerated"),
-                                context)
+            context = _CertFind(
+                store, ENCODING, 0, CERT_FIND_SUBJECT_STR_W, ctypes.c_wchar_p("libwdi autogenerated"), context
+            )
             if not context:
                 break
             name = ctypes.create_unicode_buffer(512)
@@ -401,8 +502,11 @@ def _zadig_certificates(store_name, delete):
 
 def zadig_certificates():
     """Zadig's self-made certificates for a Mac, as [(store, subject)]."""
-    return [(store, subject) for store in ("Root", "TrustedPublisher")
-            for subject in _zadig_certificates(store, delete=False)]
+    return [
+        (store, subject)
+        for store in ("Root", "TrustedPublisher")
+        for subject in _zadig_certificates(store, delete=False)
+    ]
 
 
 def rescan():
@@ -414,8 +518,8 @@ def rescan():
 
 @dataclass
 class Leftovers:
-    devices: list       # MacDevice using WinUSB (set up by this app or Zadig)
-    packages: list      # driver packages for a Mac, e.g. Zadig's
+    devices: list  # MacDevice using WinUSB (set up by this app or Zadig)
+    packages: list  # driver packages for a Mac, e.g. Zadig's
     certificates: list  # (store, subject) of Zadig's certificates for a Mac
 
     def __bool__(self):

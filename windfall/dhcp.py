@@ -19,7 +19,7 @@ def parse_options(data):
         if i + 1 >= len(data):
             break
         length = data[i + 1]
-        options[code] = bytes(data[i + 2:i + 2 + length])
+        options[code] = bytes(data[i + 2 : i + 2 + length])
         i += 2 + length
     return options
 
@@ -51,9 +51,23 @@ class DhcpServer:
     def _reply(self, request, kind):
         xid, flags, chaddr = bytes(request[4:8]), bytes(request[10:12]), bytes(request[28:44])
         nak = kind == NAK
-        header = struct.pack("!BBBB4sH2s4s4s4s4s16s64s128s", 2, 1, 6, 0, xid, 0, flags, bytes(4),
-                             bytes(4) if nak else self.client_ip, bytes(4) if nak else self.server_ip,
-                             bytes(4), chaddr, b"", b"")
+        header = struct.pack(
+            "!BBBB4sH2s4s4s4s4s16s64s128s",
+            2,
+            1,
+            6,
+            0,
+            xid,
+            0,
+            flags,
+            bytes(4),
+            bytes(4) if nak else self.client_ip,
+            bytes(4) if nak else self.server_ip,
+            bytes(4),
+            chaddr,
+            b"",
+            b"",
+        )
         options = MAGIC + bytes([53, 1, kind, 54, 4]) + self.server_ip
         if not nak:
             options += bytes([51, 4]) + struct.pack("!I", self.lease)

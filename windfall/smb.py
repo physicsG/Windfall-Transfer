@@ -47,22 +47,45 @@ class SHARE_INFO_1(ctypes.Structure):
 
 
 class NETRESOURCEW(ctypes.Structure):
-    _fields_ = [("dwScope", wt.DWORD), ("dwType", wt.DWORD), ("dwDisplayType", wt.DWORD), ("dwUsage", wt.DWORD),
-                ("lpLocalName", wt.LPWSTR), ("lpRemoteName", wt.LPWSTR), ("lpComment", wt.LPWSTR),
-                ("lpProvider", wt.LPWSTR)]
+    _fields_ = [
+        ("dwScope", wt.DWORD),
+        ("dwType", wt.DWORD),
+        ("dwDisplayType", wt.DWORD),
+        ("dwUsage", wt.DWORD),
+        ("lpLocalName", wt.LPWSTR),
+        ("lpRemoteName", wt.LPWSTR),
+        ("lpComment", wt.LPWSTR),
+        ("lpProvider", wt.LPWSTR),
+    ]
 
 
 class CREDENTIALW(ctypes.Structure):
-    _fields_ = [("Flags", wt.DWORD), ("Type", wt.DWORD), ("TargetName", wt.LPWSTR), ("Comment", wt.LPWSTR),
-                ("LastWritten", wt.FILETIME), ("CredentialBlobSize", wt.DWORD),
-                ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)), ("Persist", wt.DWORD),
-                ("AttributeCount", wt.DWORD), ("Attributes", ctypes.c_void_p), ("TargetAlias", wt.LPWSTR),
-                ("UserName", wt.LPWSTR)]
+    _fields_ = [
+        ("Flags", wt.DWORD),
+        ("Type", wt.DWORD),
+        ("TargetName", wt.LPWSTR),
+        ("Comment", wt.LPWSTR),
+        ("LastWritten", wt.FILETIME),
+        ("CredentialBlobSize", wt.DWORD),
+        ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
+        ("Persist", wt.DWORD),
+        ("AttributeCount", wt.DWORD),
+        ("Attributes", ctypes.c_void_p),
+        ("TargetAlias", wt.LPWSTR),
+        ("UserName", wt.LPWSTR),
+    ]
 
 
 _netapi32.NetShareEnum.restype = wt.DWORD
-_netapi32.NetShareEnum.argtypes = [wt.LPWSTR, wt.DWORD, ctypes.POINTER(ctypes.c_void_p), wt.DWORD,
-                                   ctypes.POINTER(wt.DWORD), ctypes.POINTER(wt.DWORD), ctypes.POINTER(wt.DWORD)]
+_netapi32.NetShareEnum.argtypes = [
+    wt.LPWSTR,
+    wt.DWORD,
+    ctypes.POINTER(ctypes.c_void_p),
+    wt.DWORD,
+    ctypes.POINTER(wt.DWORD),
+    ctypes.POINTER(wt.DWORD),
+    ctypes.POINTER(wt.DWORD),
+]
 _netapi32.NetApiBufferFree.restype = wt.DWORD
 _netapi32.NetApiBufferFree.argtypes = [ctypes.c_void_p]
 _mpr.WNetAddConnection2W.restype = wt.DWORD
@@ -83,8 +106,15 @@ def list_shares(server):
     """Shared folders on \\\\server as a sorted list of (name, description), without hidden/admin shares."""
     buf = ctypes.c_void_p()
     read, total, resume = wt.DWORD(), wt.DWORD(), wt.DWORD()
-    status = _netapi32.NetShareEnum(f"\\\\{server}", 1, ctypes.byref(buf), MAX_PREFERRED_LENGTH,
-                                    ctypes.byref(read), ctypes.byref(total), ctypes.byref(resume))
+    status = _netapi32.NetShareEnum(
+        f"\\\\{server}",
+        1,
+        ctypes.byref(buf),
+        MAX_PREFERRED_LENGTH,
+        ctypes.byref(read),
+        ctypes.byref(total),
+        ctypes.byref(resume),
+    )
     try:
         if status not in (0, ERROR_MORE_DATA):
             raise _error(status)

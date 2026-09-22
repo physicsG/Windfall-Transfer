@@ -32,8 +32,12 @@ def main():
         return 1
 
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S",
-                        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(LOG_FILE, encoding="utf-8")])
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(message)s",
+        datefmt="%H:%M:%S",
+        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(LOG_FILE, encoding="utf-8")],
+    )
     log.info("press Ctrl+C to stop; with File Sharing on the Mac, open \\\\%s in Explorer", service.mac_ip)
     service.start()
     try:

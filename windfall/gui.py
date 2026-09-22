@@ -25,24 +25,37 @@ DONE, TODO, FAIL, BUSY = "✓", "–", "✗", "…"
 MARK_COLORS = {DONE: GREEN, TODO: GREY, FAIL: RED, BUSY: AMBER}
 
 MAC_STEPS = [
-    ("cable", "Connect the Mac",
-     "Plug the Mac into this PC with a USB-C cable, and keep it awake and unlocked. A Thunderbolt or USB4 cable in "
-     "this PC's Thunderbolt port gives the fastest link; any other USB-C cable works through the bridge."),
-    ("address", "The Mac gets its address",
-     "Happens by itself: through the bridge the Mac gets {mac_ip}; on Thunderbolt/USB4 it picks its own address "
-     "and Windfall Transfer finds it."),
-    ("sharing", "Turn on File Sharing",
-     "On the Mac: System Settings > General > Sharing > File Sharing."),
-    ("account", "Allow your account for Windows",
-     "Click the (i) next to File Sharing > Options..., and tick your account under \"Windows File Sharing\" "
-     "(the Mac asks for your password). Then sign in on the Shared folders tab with your Mac account name "
-     "(Terminal: whoami) and password."),
-    ("folders", "Choose folders to share (optional)",
-     "In the same (i) panel, add folders under Shared Folders with +. Your home folder is always available "
-     "when you sign in with your own account."),
+    (
+        "cable",
+        "Connect the Mac",
+        "Plug the Mac into this PC with a USB-C cable, and keep it awake and unlocked. A Thunderbolt or USB4 cable in "
+        "this PC's Thunderbolt port gives the fastest link; any other USB-C cable works through the bridge.",
+    ),
+    (
+        "address",
+        "The Mac gets its address",
+        "Happens by itself: through the bridge the Mac gets {mac_ip}; on Thunderbolt/USB4 it picks its own address "
+        "and Windfall Transfer finds it.",
+    ),
+    ("sharing", "Turn on File Sharing", "On the Mac: System Settings > General > Sharing > File Sharing."),
+    (
+        "account",
+        "Allow your account for Windows",
+        'Click the (i) next to File Sharing > Options..., and tick your account under "Windows File Sharing" '
+        "(the Mac asks for your password). Then sign in on the Shared folders tab with your Mac account name "
+        "(Terminal: whoami) and password.",
+    ),
+    (
+        "folders",
+        "Choose folders to share (optional)",
+        "In the same (i) panel, add folders under Shared Folders with +. Your home folder is always available "
+        "when you sign in with your own account.",
+    ),
 ]
-USB4_TIP = ("Thunderbolt/USB4 cable, optional: transfers to the Mac may get faster with the MTU of the Mac's "
-            "Thunderbolt Bridge set to 9000 (System Settings > Network > Thunderbolt Bridge > Details > Hardware).")
+USB4_TIP = (
+    "Thunderbolt/USB4 cable, optional: transfers to the Mac may get faster with the MTU of the Mac's "
+    "Thunderbolt Bridge set to 9000 (System Settings > Network > Thunderbolt Bridge > Details > Hardware)."
+)
 
 
 class _QueueHandler(logging.Handler):
@@ -200,9 +213,11 @@ class App:
         self.password_entry.grid(row=0, column=3, sticky="w", padx=(6, 0))
         self.password_entry.bind("<Return>", lambda event: self.sign_in())
         self.save_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(account, variable=self.save_var,
-                        text="Remember in Windows Credential Manager, so Explorer opens the Mac without asking"
-                        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(
+            account,
+            variable=self.save_var,
+            text="Remember in Windows Credential Manager, so Explorer opens the Mac without asking",
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
         buttons = ttk.Frame(account)
         buttons.grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
         self.sign_in_button = ttk.Button(buttons, text="Sign in and show folders", command=self.sign_in)
@@ -210,15 +225,17 @@ class App:
         self.forget_button = ttk.Button(buttons, text="Forget saved password", command=self.forget)
         self.forget_button.pack(side="left", padx=(8, 0))
         self.account_var = tk.StringVar(value=f"Password saved for {self.saved_user}." if self.saved_user else "")
-        ttk.Label(account, textvariable=self.account_var, style="Hint.TLabel",
-                  wraplength=int(700 * self.scale)).grid(row=3, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ttk.Label(account, textvariable=self.account_var, style="Hint.TLabel", wraplength=int(700 * self.scale)).grid(
+            row=3, column=0, columnspan=4, sticky="w", pady=(8, 0)
+        )
 
         folders = ttk.LabelFrame(frame, text="Folders the Mac shares", padding=10)
         folders.pack(fill="both", expand=True, pady=(12, 0))
         tree_frame = ttk.Frame(folders)
         tree_frame.pack(fill="both", expand=True)
-        self.tree = ttk.Treeview(tree_frame, columns=("name", "comment"), show="headings", height=6,
-                                 selectmode="browse")
+        self.tree = ttk.Treeview(
+            tree_frame, columns=("name", "comment"), show="headings", height=6, selectmode="browse"
+        )
         self.tree.heading("name", text="Folder", anchor="w")
         self.tree.heading("comment", text="Description", anchor="w")
         self.tree.column("name", width=int(260 * self.scale), anchor="w")
@@ -236,14 +253,18 @@ class App:
         self.refresh_button = ttk.Button(row, text="Refresh", command=self.list_folders)
         self.refresh_button.pack(side="left", padx=(8, 0))
         self.folders_var = tk.StringVar(value="Connect the Mac to see its shared folders.")
-        ttk.Label(folders, textvariable=self.folders_var, style="Hint.TLabel",
-                  wraplength=int(700 * self.scale)).pack(anchor="w", pady=(8, 0))
+        ttk.Label(folders, textvariable=self.folders_var, style="Hint.TLabel", wraplength=int(700 * self.scale)).pack(
+            anchor="w", pady=(8, 0)
+        )
         return frame
 
     def _build_steps(self, parent):
         frame = ttk.Frame(parent, padding=12)
-        ttk.Label(frame, text="One-time setup on the Mac. The marks update by themselves while the Mac is connected.",
-                  style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(
+            frame,
+            text="One-time setup on the Mac. The marks update by themselves while the Mac is connected.",
+            style="Hint.TLabel",
+        ).pack(anchor="w", pady=(0, 8))
         self.step_marks, self.step_notes, self.step_texts = {}, {}, {}
         for number, (key, title, text) in enumerate(MAC_STEPS, 1):
             row = ttk.Frame(frame)
@@ -253,14 +274,16 @@ class App:
             body = ttk.Frame(row)
             body.pack(side="left", fill="x", expand=True, padx=(6, 0))
             ttk.Label(body, text=f"{number}. {title}", style="Step.TLabel").pack(anchor="w")
-            description = ttk.Label(body, text=text.format(mac_ip=self.settings["mac_ip"]),
-                                    wraplength=int(700 * self.scale))
+            description = ttk.Label(
+                body, text=text.format(mac_ip=self.settings["mac_ip"]), wraplength=int(700 * self.scale)
+            )
             description.pack(anchor="w")
             note = ttk.Label(body, style="Hint.TLabel")
             note.pack(anchor="w")
             self.step_marks[key], self.step_notes[key], self.step_texts[key] = mark, note, description
-        ttk.Label(frame, text=USB4_TIP, style="Hint.TLabel",
-                  wraplength=int(730 * self.scale)).pack(anchor="w", pady=(12, 0))
+        ttk.Label(frame, text=USB4_TIP, style="Hint.TLabel", wraplength=int(730 * self.scale)).pack(
+            anchor="w", pady=(12, 0)
+        )
         return frame
 
     def _build_pc(self, parent):
@@ -271,18 +294,25 @@ class App:
         ttk.Label(usb, textvariable=self.setup_var, wraplength=int(700 * self.scale)).pack(anchor="w")
         self.setup_pc_button = ttk.Button(usb, text="Set up this PC", command=self.set_up)
         self.setup_pc_button.pack(anchor="w", pady=(8, 0))
-        ttk.Label(usb, style="Hint.TLabel", wraplength=int(700 * self.scale),
-                  text="Setting up gives the Mac's USB device Microsoft's WinUSB driver, which is part of Windows. "
-                       "Nothing is downloaded and no certificate is added. Needed once per Mac, and only for "
-                       "USB cables: Thunderbolt/USB4 cables work without it.").pack(anchor="w", pady=(8, 0))
+        ttk.Label(
+            usb,
+            style="Hint.TLabel",
+            wraplength=int(700 * self.scale),
+            text="Setting up gives the Mac's USB device Microsoft's WinUSB driver, which is part of Windows. "
+            "Nothing is downloaded and no certificate is added. Needed once per Mac, and only for "
+            "USB cables: Thunderbolt/USB4 cables work without it.",
+        ).pack(anchor="w", pady=(8, 0))
 
         remove = ttk.LabelFrame(frame, text="Remove Windfall Transfer from this PC", padding=10)
         remove.pack(fill="x", pady=(12, 0))
-        ttk.Label(remove, wraplength=int(700 * self.scale),
-                  text="Undoes everything Windfall Transfer changed on this PC, and what Zadig added if you used it: "
-                       "the Mac's USB driver, Zadig's driver package and certificate, the Wintun network driver "
-                       "(unless another app such as Tailscale uses it), saved Mac passwords, and Windfall Transfer's "
-                       "settings and logs. Then you can simply delete Windfall Transfer.").pack(anchor="w")
+        ttk.Label(
+            remove,
+            wraplength=int(700 * self.scale),
+            text="Undoes everything Windfall Transfer changed on this PC, and what Zadig added if you used it: "
+            "the Mac's USB driver, Zadig's driver package and certificate, the Wintun network driver "
+            "(unless another app such as Tailscale uses it), saved Mac passwords, and Windfall Transfer's "
+            "settings and logs. Then you can simply delete Windfall Transfer.",
+        ).pack(anchor="w")
         self.remove_button = ttk.Button(remove, text="Remove from this PC...", command=self.remove_from_pc)
         self.remove_button.pack(anchor="w", pady=(8, 0))
         return frame
@@ -294,30 +324,37 @@ class App:
         self.windows_ip_var = tk.StringVar(value=self.settings["windows_ip"])
         self.mac_ip_var = tk.StringVar(value=self.settings["mac_ip"])
         self.prefix_var = tk.StringVar(value=str(self.settings["prefix"]))
-        rows = [("This PC", self.windows_ip_var, f"address of the '{ADAPTER_NAME}' adapter"),
-                ("Mac", self.mac_ip_var, "handed to the Mac automatically"),
-                ("Prefix length", self.prefix_var, "24 means 255.255.255.0")]
+        rows = [
+            ("This PC", self.windows_ip_var, f"address of the '{ADAPTER_NAME}' adapter"),
+            ("Mac", self.mac_ip_var, "handed to the Mac automatically"),
+            ("Prefix length", self.prefix_var, "24 means 255.255.255.0"),
+        ]
         for row, (label, var, hint) in enumerate(rows):
             ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=3)
             ttk.Entry(form, textvariable=var, width=18).grid(row=row, column=1, sticky="w", padx=8, pady=3)
             ttk.Label(form, text=hint, style="Hint.TLabel").grid(row=row, column=2, sticky="w", pady=3)
-        ttk.Label(form, text="Use addresses that none of your other networks use.",
-                  style="Hint.TLabel").grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(form, text="Use addresses that none of your other networks use.", style="Hint.TLabel").grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(6, 0)
+        )
 
         usb4 = ttk.LabelFrame(frame, text="Thunderbolt / USB4 cable (built into Windows and macOS)", padding=10)
         usb4.pack(fill="x", pady=(12, 0))
         ttk.Label(usb4, text="Windfall Transfer finds the Mac on this link by itself.").grid(
-            row=0, column=0, columnspan=3, sticky="w")
+            row=0, column=0, columnspan=3, sticky="w"
+        )
         ttk.Label(usb4, text="Mac's address").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.usb4_ip_var = tk.StringVar(value=self.settings["usb4_mac_ip"])
-        ttk.Entry(usb4, textvariable=self.usb4_ip_var, width=18).grid(row=1, column=1, sticky="w", padx=8,
-                                                                      pady=(6, 0))
-        ttk.Label(usb4, text="only if it isn't found; the Mac shows it under Network > Thunderbolt Bridge",
-                  style="Hint.TLabel").grid(row=1, column=2, sticky="w", pady=(6, 0))
+        ttk.Entry(usb4, textvariable=self.usb4_ip_var, width=18).grid(row=1, column=1, sticky="w", padx=8, pady=(6, 0))
+        ttk.Label(
+            usb4,
+            text="only if it isn't found; the Mac shows it under Network > Thunderbolt Bridge",
+            style="Hint.TLabel",
+        ).grid(row=1, column=2, sticky="w", pady=(6, 0))
 
         self.autostart_var = tk.BooleanVar(value=self.settings["start_on_launch"])
-        ttk.Checkbutton(frame, text="Start the bridge when Windfall Transfer opens",
-                        variable=self.autostart_var).pack(anchor="w", pady=(12, 0))
+        ttk.Checkbutton(frame, text="Start the bridge when Windfall Transfer opens", variable=self.autostart_var).pack(
+            anchor="w", pady=(12, 0)
+        )
         row = ttk.Frame(frame)
         row.pack(fill="x", pady=(10, 0))
         ttk.Button(row, text="Save settings", command=self.save_settings).pack(side="left")
@@ -328,17 +365,20 @@ class App:
         about.pack(fill="x", pady=(16, 0))
         self.usb4_var = tk.StringVar()
         ttk.Label(about, textvariable=self.usb4_var, wraplength=int(700 * self.scale)).pack(anchor="w", pady=1)
-        for text in (f"USB bridge adapter: '{ADAPTER_NAME}', which exists while the bridge runs. A USB 2.0 cable "
-                     "reaches about 35-40 MB/s.",
-                     f"Log file: {LOG_FILE}",
-                     f"Settings file: {app_settings.PATH}"):
+        for text in (
+            f"USB bridge adapter: '{ADAPTER_NAME}', which exists while the bridge runs. A USB 2.0 cable "
+            "reaches about 35-40 MB/s.",
+            f"Log file: {LOG_FILE}",
+            f"Settings file: {app_settings.PATH}",
+        ):
             ttk.Label(about, text=text, wraplength=int(700 * self.scale)).pack(anchor="w", pady=1)
         return frame
 
     def _build_log(self, parent):
         frame = ttk.Frame(parent, padding=12)
-        self.log_text = tk.Text(frame, height=10, wrap="word", state="disabled", font=("Consolas", 9),
-                                relief="flat", borderwidth=0)
+        self.log_text = tk.Text(
+            frame, height=10, wrap="word", state="disabled", font=("Consolas", 9), relief="flat", borderwidth=0
+        )
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.pack(side="left", fill="both", expand=True)
@@ -399,8 +439,9 @@ class App:
         self.status_var.set(text)
         self.detail_var.set(detail)
         self.dot.itemconfigure(self.dot_item, fill=color)
-        self.start_button.configure(text="Stop bridge" if running else "Start bridge",
-                                    state="disabled" if self.stopping else "normal")
+        self.start_button.configure(
+            text="Stop bridge" if running else "Start bridge", state="disabled" if self.stopping else "normal"
+        )
         ready = "normal" if self.connected else "disabled"
         self.open_button.configure(state=ready)
         self.refresh_button.configure(state=ready)
@@ -427,8 +468,11 @@ class App:
         if any(not mac.ready for mac in present):
             return "The Mac is plugged in and needs a one-time setup: click Set up this PC."
         if present:
-            hint = "" if self.connected else (" If it doesn't connect within a few seconds, unplug the cable and "
-                                              "plug it back in.")
+            hint = (
+                ""
+                if self.connected
+                else (" If it doesn't connect within a few seconds, unplug the cable and plug it back in.")
+            )
             return "Set up: the Mac's USB connection uses Windows' WinUSB driver." + hint
         if any(mac.ready for mac in self.macs):
             return "Set up. Plug the Mac in with a USB cable to connect."
@@ -441,19 +485,31 @@ class App:
         if self.link and self.link[0] == "usb4":
             to_mac, to_pc = usb4.rates
             name = f"{usb4.mac_name}    " if usb4.mac_name else ""
-            return (f"Connected over Thunderbolt/USB4 to the Mac at {usb4.mac_ip}",
-                    f"{name}{speed_text(usb4.link_speed)} link    To the Mac {to_mac:.1f} MB/s    "
-                    f"To this PC {to_pc:.1f} MB/s", GREEN)
+            return (
+                f"Connected over Thunderbolt/USB4 to the Mac at {usb4.mac_ip}",
+                f"{name}{speed_text(usb4.link_speed)} link    To the Mac {to_mac:.1f} MB/s    "
+                f"To this PC {to_pc:.1f} MB/s",
+                GREEN,
+            )
         if self.link:
             to_mac, to_pc = service.rates
-            return (f"Connected over USB to the Mac at {service.mac_ip}",
-                    f"To the Mac {to_mac:.1f} MB/s    To this PC {to_pc:.1f} MB/s", GREEN)
+            return (
+                f"Connected over USB to the Mac at {service.mac_ip}",
+                f"To the Mac {to_mac:.1f} MB/s    To this PC {to_pc:.1f} MB/s",
+                GREEN,
+            )
         if usb4.state == Usb4Monitor.SEARCHING:
-            return ("Thunderbolt/USB4 link is up; looking for the Mac...",
-                    "If it isn't found, enter the Mac's address under Connection settings.", AMBER)
+            return (
+                "Thunderbolt/USB4 link is up; looking for the Mac...",
+                "If it isn't found, enter the Mac's address under Connection settings.",
+                AMBER,
+            )
         if self.needs_setup:
-            return ("The Mac needs a one-time setup on this PC",
-                    "Click Set up this PC: Windows' own WinUSB driver then handles the Mac's USB connection.", AMBER)
+            return (
+                "The Mac needs a one-time setup on this PC",
+                "Click Set up this PC: Windows' own WinUSB driver then handles the Mac's USB connection.",
+                AMBER,
+            )
         if service is None or service.state == BridgeService.STOPPED:
             return "Bridge stopped", "Click Start bridge to connect to the Mac.", GREY
         if service.state == BridgeService.FAILED:
@@ -469,12 +525,16 @@ class App:
     def _usb4_summary(self):
         usb4 = self.usb4
         if usb4.state == Usb4Monitor.ABSENT:
-            return ("Thunderbolt/USB4 link: none. It appears when a Thunderbolt or USB4 cable connects the Mac to "
-                    "this PC's Thunderbolt port.")
+            return (
+                "Thunderbolt/USB4 link: none. It appears when a Thunderbolt or USB4 cable connects the Mac to "
+                "this PC's Thunderbolt port."
+            )
         if usb4.state == Usb4Monitor.DOWN:
             return "Thunderbolt/USB4 link: the adapter is there but not connected."
-        parts = [f"Thunderbolt/USB4 link: {usb4.adapter.description if usb4.adapter else 'up'}",
-                 speed_text(usb4.link_speed)]
+        parts = [
+            f"Thunderbolt/USB4 link: {usb4.adapter.description if usb4.adapter else 'up'}",
+            speed_text(usb4.link_speed),
+        ]
         if usb4.local_ip:
             parts.append(f"this PC {usb4.local_ip}")
         parts.append(f"Mac {usb4.mac_ip}" if usb4.mac_ip else "looking for the Mac")
@@ -489,8 +549,9 @@ class App:
         state = service.state if service else BridgeService.STOPPED
         over_usb4 = bool(self.link and self.link[0] == "usb4")
         if over_usb4:
-            self._set_step("cable", DONE, f"Connected with a Thunderbolt/USB4 cable ({speed_text(usb4.link_speed)} "
-                                          "link).")
+            self._set_step(
+                "cable", DONE, f"Connected with a Thunderbolt/USB4 cable ({speed_text(usb4.link_speed)} link)."
+            )
         elif state == BridgeService.CONNECTED:
             self._set_step("cable", DONE, "Connected over USB, through the bridge.")
         elif usb4.state == Usb4Monitor.SEARCHING:
@@ -500,8 +561,11 @@ class App:
         elif state == BridgeService.WAITING:
             self._set_step("cable", BUSY, "Waiting for the Mac...")
         else:
-            self._set_step("cable", TODO, "" if state == BridgeService.FAILED else
-                           "Start the bridge, or connect a Thunderbolt/USB4 cable.")
+            self._set_step(
+                "cable",
+                TODO,
+                "" if state == BridgeService.FAILED else "Start the bridge, or connect a Thunderbolt/USB4 cable.",
+            )
         if over_usb4:
             self._set_step("address", DONE, f"The Mac is at {usb4.mac_ip} on Thunderbolt/USB4.")
         elif self.connected:
@@ -569,8 +633,9 @@ class App:
             self.auto_listed = True
             self.list_folders()
         elif changed and is_open and self.shares is None:
-            self.folders_var.set("File Sharing is on. Enter your Mac account name and password above, "
-                                 "then click Sign in.")
+            self.folders_var.set(
+                "File Sharing is on. Enter your Mac account name and password above, then click Sign in."
+            )
         elif changed and not is_open:
             self.folders_var.set("The Mac's File Sharing doesn't answer. See the Mac setup tab.")
 
@@ -610,8 +675,9 @@ class App:
             return
         log.info("the Mac's USB driver is set up")
         if any(result):
-            messagebox.showinfo("Windfall Transfer", "The Mac's USB driver is set up. Windows asks for a restart to "
-                                               "finish it.")
+            messagebox.showinfo(
+                "Windfall Transfer", "The Mac's USB driver is set up. Windows asks for a restart to finish it."
+            )
         if not (self.service and self.service.running):
             self.start_bridge()
 
@@ -633,9 +699,11 @@ class App:
             items.append(f"delete the driver package Zadig added ({', '.join(left.packages)})")
         if left.certificates:
             items.append("delete Zadig's certificate for the Mac from Windows' trusted certificates")
-        items += ["delete the Wintun network driver, unless another app (such as Tailscale or WireGuard) uses it",
-                  "forget the Mac passwords saved in Windows Credential Manager",
-                  "delete Windfall Transfer's settings and logs"]
+        items += [
+            "delete the Wintun network driver, unless another app (such as Tailscale or WireGuard) uses it",
+            "forget the Mac passwords saved in Windows Credential Manager",
+            "delete Windfall Transfer's settings and logs",
+        ]
         unpacked = winapp.unpacked_folder()
         if unpacked:
             items.append(f"delete the copy of Windfall Transfer unpacked in {unpacked}")
@@ -643,8 +711,10 @@ class App:
             items.append("delete what the app left behind under its earlier name, Connect App")
         what = "Windfall Transfer.exe" if unpacked else "its folder"
         bullets = "\n".join(f"• {item}" for item in items)
-        text = (f"This undoes what Windfall Transfer changed on this PC:\n\n{bullets}\n\n"
-                f"Windfall Transfer closes afterwards, and then you can delete {what}. Continue?")
+        text = (
+            f"This undoes what Windfall Transfer changed on this PC:\n\n{bullets}\n\n"
+            f"Windfall Transfer closes afterwards, and then you can delete {what}. Continue?"
+        )
         if not messagebox.askyesno("Remove Windfall Transfer from this PC", text, icon="warning"):
             self.removing = False
             return
@@ -673,6 +743,7 @@ class App:
                 smb.sign_out(address)
             done.append("forgot the saved Mac passwords")
             return done
+
         self._in_background(work, self._removed)
 
     def _removed(self, result):
@@ -685,8 +756,10 @@ class App:
             log.info("removed: %s", line)
         what = "Windfall Transfer.exe" if winapp.unpacked_folder() else "its folder"
         bullets = "\n".join(f"• {line}" for line in result)
-        messagebox.showinfo("Windfall Transfer", f"Removed from this PC:\n\n{bullets}\n\n"
-                                                 f"Windfall Transfer closes now; you can delete {what}.")
+        messagebox.showinfo(
+            "Windfall Transfer",
+            f"Removed from this PC:\n\n{bullets}\n\nWindfall Transfer closes now; you can delete {what}.",
+        )
         self.delete_data_on_exit = True
         self.close()
 
@@ -699,6 +772,7 @@ class App:
             except Exception as e:  # handed to `done` on the UI thread
                 result = e
             self.results.put((done, result))
+
         threading.Thread(target=run, daemon=True).start()
 
     def toggle_bridge(self):
@@ -711,8 +785,7 @@ class App:
         if self.stopping or (self.service and self.service.running):
             return
         try:
-            self.service = BridgeService(self.settings["windows_ip"], self.settings["mac_ip"],
-                                         self.settings["prefix"])
+            self.service = BridgeService(self.settings["windows_ip"], self.settings["mac_ip"], self.settings["prefix"])
         except ValueError as e:
             messagebox.showerror("Windfall Transfer", f"Check the connection settings: {e}")
             return
@@ -732,6 +805,7 @@ class App:
         def stopped(_):
             self.stopping = False
             self._run_after_stop()
+
         self._in_background(service.stop, stopped)
 
     def _run_after_stop(self):
@@ -767,6 +841,7 @@ class App:
                 for address in save_for:
                     smb.save_credentials(address, user, password)
             return smb.list_shares(ip)
+
         self._in_background(work, lambda result: self._listed(result, ip, user, password is not None, save))
 
     def _listed(self, result, ip, user, used_password, saved):
@@ -796,8 +871,10 @@ class App:
                 self.saved_user = user
         who = self._known_user()
         remembered = bool(who and who == self.saved_user)
-        self.account_var.set((f"Signed in as {who}." if who else "Signed in.") +
-                             (" The password is saved in Windows Credential Manager." if remembered else ""))
+        self.account_var.set(
+            (f"Signed in as {who}." if who else "Signed in.")
+            + (" The password is saved in Windows Credential Manager." if remembered else "")
+        )
         self.shares = result
         self._show_shares(result)
         if result:
@@ -858,8 +935,9 @@ class App:
         self.settings.update(new, usb4_mac_ip=usb4_ip, start_on_launch=self.autostart_var.get())
         app_settings.save(self.settings)
         running = bool(self.service and self.service.running)
-        self.settings_var.set("Saved." + (" Stop and start the bridge to use the new addresses."
-                                          if changed and running else ""))
+        self.settings_var.set(
+            "Saved." + (" Stop and start the bridge to use the new addresses." if changed and running else "")
+        )
         self.step_texts["address"].configure(text=MAC_STEPS[1][2].format(mac_ip=mac_ip))
 
     # ---- closing ----
@@ -895,8 +973,9 @@ def main(argv=None):
     preview = "--preview" in argv  # the window without admin rights or the bridge
     if not preview and not winapp.is_admin():
         if not winapp.relaunch_as_admin(os.path.abspath(sys.argv[0]), argv, console=False):
-            winapp.message_box("Windfall Transfer needs administrator rights to create its network adapter.",
-                               error=True)
+            winapp.message_box(
+                "Windfall Transfer needs administrator rights to create its network adapter.", error=True
+            )
         return
     winapp.enable_dpi_awareness()
     winapp.set_app_id("WindfallTransfer.App")  # own taskbar button and icon, not Python's

@@ -33,9 +33,35 @@ TAG = f"python{sys.version_info.major}{sys.version_info.minor}"
 CSC = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
 
 WHOLE_PACKAGES = ["encodings", "tkinter"]  # codecs are looked up by name at run time; tkinter's parts load lazily
-EXCLUDES = ["unittest", "doctest", "pydoc", "pdb", "test", "idlelib", "tkinter.test", "lib2to3", "ensurepip", "venv",
-            "turtle", "turtledemo", "bz2", "lzma", "_bz2", "_lzma", "ssl", "_ssl", "http", "urllib", "email", "xml",
-            "xmlrpc", "sqlite3", "asyncio", "multiprocessing", "concurrent"]
+EXCLUDES = [
+    "unittest",
+    "doctest",
+    "pydoc",
+    "pdb",
+    "test",
+    "idlelib",
+    "tkinter.test",
+    "lib2to3",
+    "ensurepip",
+    "venv",
+    "turtle",
+    "turtledemo",
+    "bz2",
+    "lzma",
+    "_bz2",
+    "_lzma",
+    "ssl",
+    "_ssl",
+    "http",
+    "urllib",
+    "email",
+    "xml",
+    "xmlrpc",
+    "sqlite3",
+    "asyncio",
+    "multiprocessing",
+    "concurrent",
+]
 if "_sha2" in sys.builtin_module_names:
     EXCLUDES += ["hashlib", "_hashlib"]  # random falls back to hashlib only without the built-in _sha2
 RUNTIME_FILES = ["python.exe", "pythonw.exe", f"{TAG}.dll", "python3.dll", "vcruntime140.dll", "vcruntime140_1.dll"]
@@ -103,6 +129,7 @@ def copy_app():
 
 # ---- icon: two arrows (Mac <-> PC) on a rounded blue square ----
 
+
 def _draw(size):
     """RGBA rows of the icon at one size, 4x4 supersampled."""
     blue, white, samples = (37, 99, 235), (255, 255, 255), 4
@@ -110,7 +137,7 @@ def _draw(size):
     def in_square(u, v, margin=0.03, radius=0.22):
         x = min(max(u, margin + radius), 1 - margin - radius)
         y = min(max(v, margin + radius), 1 - margin - radius)
-        return (u - x) ** 2 + (v - y) ** 2 <= radius ** 2
+        return (u - x) ** 2 + (v - y) ** 2 <= radius**2
 
     def in_arrow(u, v, y0, tail, tip, head=0.19, half_head=0.13, half_shaft=0.05):
         direction = 1 if tip > tail else -1
@@ -133,7 +160,7 @@ def _draw(size):
                         foreground += in_arrow(u, v, 0.37, 0.20, 0.80) or in_arrow(u, v, 0.63, 0.80, 0.20)
             mix = foreground / background if background else 0
             row += bytes([round(b + (w - b) * mix) for b, w in zip(blue, white)])
-            row.append(round(255 * background / samples ** 2))
+            row.append(round(255 * background / samples**2))
         rows.append(bytes(row))
     return rows
 
@@ -141,15 +168,23 @@ def _draw(size):
 def _png(size, rows):
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(b"".join(b"\0" + row for row in rows), 9)) + chunk(b"IEND", b""))
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b"".join(b"\0" + row for row in rows), 9))
+        + chunk(b"IEND", b"")
+    )
 
 
 def _dib(size, rows):
     header = struct.pack("<IiiHHIIiiII", 40, size, size * 2, 1, 32, 0, 0, 0, 0, 0, 0)
-    pixels = b"".join(bytes(value for i in range(0, len(row), 4)
-                            for value in (row[i + 2], row[i + 1], row[i], row[i + 3]))  # RGBA -> BGRA
-                      for row in reversed(rows))
+    pixels = b"".join(
+        bytes(
+            value for i in range(0, len(row), 4) for value in (row[i + 2], row[i + 1], row[i], row[i + 3])
+        )  # RGBA -> BGRA
+        for row in reversed(rows)
+    )
     return header + pixels + bytes(((size + 31) // 32) * 4 * size)  # AND mask unused: alpha decides
 
 
@@ -167,26 +202,41 @@ def compile_launcher(out, icon, manifest, payload=None, payload_id=None):
     """The folder launcher, or with a payload the single-file one (ONEFILE: the payload is embedded)."""
     if not CSC.exists():
         raise SystemExit(f"C# compiler not found at {CSC} (part of Windows' .NET Framework 4)")
-    command = [str(CSC), "/nologo", "/target:winexe", "/optimize+", "/platform:x64", f"/win32manifest:{manifest}",
-               f"/win32icon:{icon}", f"/out:{out}", "/reference:System.Windows.Forms.dll"]
+    command = [
+        str(CSC),
+        "/nologo",
+        "/target:winexe",
+        "/optimize+",
+        "/platform:x64",
+        f"/win32manifest:{manifest}",
+        f"/win32icon:{icon}",
+        f"/out:{out}",
+        "/reference:System.Windows.Forms.dll",
+    ]
     sources = [str(TOOLS / "launcher.cs")]
     if payload:
         generated = payload.with_name("payload.cs")
-        generated.write_text(f'static class Payload {{ public const string Id = "{payload_id}"; }}\n',
-                             encoding="utf-8")
-        command += ["/define:ONEFILE", f"/resource:{payload},payload.zip", "/reference:System.IO.Compression.dll",
-                    "/reference:System.IO.Compression.FileSystem.dll"]
+        generated.write_text(f'static class Payload {{ public const string Id = "{payload_id}"; }}\n', encoding="utf-8")
+        command += [
+            "/define:ONEFILE",
+            f"/resource:{payload},payload.zip",
+            "/reference:System.IO.Compression.dll",
+            "/reference:System.IO.Compression.FileSystem.dll",
+        ]
         sources.append(str(generated))
     subprocess.run(command + sources, check=True)
 
 
 def smoke_test(folder, label):
     """Import the app with a bundled runtime only (no window), to catch anything missing from the build."""
-    code = ("import tkinter, windfall.gui, windfall.driver, windfall.usb4, windfall.service; "
-            "print('Python', __import__('sys').version.split()[0], 'Tcl', tkinter.Tcl().eval('info patchlevel'))")
+    code = (
+        "import tkinter, windfall.gui, windfall.driver, windfall.usb4, windfall.service; "
+        "print('Python', __import__('sys').version.split()[0], 'Tcl', tkinter.Tcl().eval('info patchlevel'))"
+    )
     env = {key: value for key, value in os.environ.items() if not key.startswith(("PYTHON", "TCL_", "TK_"))}
-    result = subprocess.run([str(folder / "runtime" / "python.exe"), "-c", code], cwd=folder, env=env,
-                            capture_output=True, text=True)
+    result = subprocess.run(
+        [str(folder / "runtime" / "python.exe"), "-c", code], cwd=folder, env=env, capture_output=True, text=True
+    )
     if result.returncode:
         raise SystemExit(f"{label}: the bundled runtime couldn't load the app\n{result.stderr.strip()}")
     print(f"{label}: OK ({result.stdout.strip()})")
@@ -207,8 +257,10 @@ def build_single_exe(icon):
         compile_launcher(built, icon, TOOLS / "launcher.manifest", payload, payload_id)
         # Same launcher without the admin requirement, so the check needs no prompt; it unpacks to a temp folder.
         manifest = tmp / "check.manifest"
-        manifest.write_text((TOOLS / "launcher.manifest").read_text(encoding="utf-8")
-                            .replace("requireAdministrator", "asInvoker"), encoding="utf-8")
+        manifest.write_text(
+            (TOOLS / "launcher.manifest").read_text(encoding="utf-8").replace("requireAdministrator", "asInvoker"),
+            encoding="utf-8",
+        )
         checker = tmp / "check.exe"
         compile_launcher(checker, icon, manifest, payload, payload_id)
         unpacked = tmp / "unpacked"
@@ -238,7 +290,7 @@ def remove(path):
 
 
 def main():
-    if sys.maxsize <= 2 ** 32 or not (BASE / f"{TAG}.dll").exists():
+    if sys.maxsize <= 2**32 or not (BASE / f"{TAG}.dll").exists():
         raise SystemExit("run this with a 64-bit python.org Python installation")
     if not remove(STAGE):
         raise SystemExit(f"{STAGE} is in use: close Windfall Transfer if it runs from there, then build again")
@@ -252,8 +304,10 @@ def main():
     smoke_test(STAGE, "folder build")
     payload_id = build_single_exe(APP / "app.ico")
     size = sum(path.stat().st_size for path in STAGE.rglob("*") if path.is_file())
-    print(f"{len(sources)} standard-library modules, {len(extensions)} extension modules: "
-          f"{', '.join(sorted(path.name for path in extensions))}")
+    print(
+        f"{len(sources)} standard-library modules, {len(extensions)} extension modules: "
+        f"{', '.join(sorted(path.name for path in extensions))}"
+    )
     print(f"built {STAGE} ({size / 1e6:.1f} MB)")
     print(f"built {SINGLE} ({SINGLE.stat().st_size / 1e6:.1f} MB, version {payload_id}): the file to distribute")
 

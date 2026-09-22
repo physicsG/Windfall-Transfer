@@ -10,12 +10,33 @@ ALL_NODES = ipaddress.IPv6Address("ff02::1").packed
 
 TCP_SYN, TCP_RST, TCP_ACK = 0x02, 0x04, 0x10
 _TCP_FLAG_NAMES = [(0x02, "SYN"), (0x10, "ACK"), (0x04, "RST"), (0x01, "FIN"), (0x08, "PSH")]
-_ICMP6_NAMES = {1: "dest unreachable", 2: "packet too big", 3: "time exceeded", 128: "echo request",
-                129: "echo reply", 130: "MLD query", 131: "MLD report", 133: "router solicitation",
-                134: "router advertisement", 135: "neighbor solicitation", 136: "neighbor advertisement",
-                143: "MLDv2 report"}
-_UDP_NAMES = {53: "DNS", 67: "DHCP", 68: "DHCP", 123: "NTP", 137: "NetBIOS", 138: "NetBIOS", 546: "DHCPv6",
-              547: "DHCPv6", 1900: "SSDP", 5353: "mDNS", 5355: "LLMNR"}
+_ICMP6_NAMES = {
+    1: "dest unreachable",
+    2: "packet too big",
+    3: "time exceeded",
+    128: "echo request",
+    129: "echo reply",
+    130: "MLD query",
+    131: "MLD report",
+    133: "router solicitation",
+    134: "router advertisement",
+    135: "neighbor solicitation",
+    136: "neighbor advertisement",
+    143: "MLDv2 report",
+}
+_UDP_NAMES = {
+    53: "DNS",
+    67: "DHCP",
+    68: "DHCP",
+    123: "NTP",
+    137: "NetBIOS",
+    138: "NetBIOS",
+    546: "DHCPv6",
+    547: "DHCPv6",
+    1900: "SSDP",
+    5353: "mDNS",
+    5355: "LLMNR",
+}
 _DHCP_TYPES = {1: "DISCOVER", 2: "OFFER", 3: "REQUEST", 4: "DECLINE", 5: "ACK", 6: "NAK", 7: "RELEASE", 8: "INFORM"}
 
 
@@ -41,6 +62,7 @@ def ethernet(dst, src, ethertype, payload):
 
 
 # ---- IPv6 ----
+
 
 def link_local(mac):
     """fe80::/64 address derived from a MAC (modified EUI-64)."""
@@ -88,6 +110,7 @@ def tcp6(our_mac, our_ip, dst_mac, dst_ip, sport, dport, seq, ack, flags):
 
 # ---- IPv4 ----
 
+
 def arp(op, our_mac, our_ip, target_mac, target_ip, dst_mac=BROADCAST_MAC):
     body = struct.pack("!HHBBH", 1, ETH_IPV4, 6, 4, op) + our_mac + our_ip + target_mac + target_ip
     return ethernet(dst_mac, our_mac, ETH_ARP, body)
@@ -101,8 +124,9 @@ def ipv4(src, dst, proto, payload, ttl=64):
 
 def udp4(src, dst, sport, dport, payload):
     length = 8 + len(payload)
-    csum = checksum(src + dst + struct.pack("!BBH", 0, PROTO_UDP, length) +
-                    struct.pack("!HHHH", sport, dport, length, 0) + payload)
+    csum = checksum(
+        src + dst + struct.pack("!BBH", 0, PROTO_UDP, length) + struct.pack("!HHHH", sport, dport, length, 0) + payload
+    )
     return struct.pack("!HHHH", sport, dport, length, csum or 0xFFFF) + payload
 
 
@@ -113,6 +137,7 @@ def echo4(our_mac, our_ip, dst_mac, dst_ip, ident, seq, reply=False, data=b"wind
 
 
 # ---- parsing ----
+
 
 def _dhcp_type(bootp):
     if bytes(bootp[236:240]) != b"\x63\x82\x53\x63":

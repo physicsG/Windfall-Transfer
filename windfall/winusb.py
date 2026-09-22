@@ -53,22 +53,37 @@ class SP_DEVICE_INTERFACE_DATA(ctypes.Structure):
 
 class WINUSB_SETUP_PACKET(ctypes.Structure):
     _pack_ = 1
-    _fields_ = [("RequestType", ctypes.c_ubyte), ("Request", ctypes.c_ubyte),
-                ("Value", ctypes.c_ushort), ("Index", ctypes.c_ushort), ("Length", ctypes.c_ushort)]
+    _fields_ = [
+        ("RequestType", ctypes.c_ubyte),
+        ("Request", ctypes.c_ubyte),
+        ("Value", ctypes.c_ushort),
+        ("Index", ctypes.c_ushort),
+        ("Length", ctypes.c_ushort),
+    ]
 
 
 class USB_INTERFACE_DESCRIPTOR(ctypes.Structure):
     _pack_ = 1
-    _fields_ = [("bLength", ctypes.c_ubyte), ("bDescriptorType", ctypes.c_ubyte),
-                ("bInterfaceNumber", ctypes.c_ubyte), ("bAlternateSetting", ctypes.c_ubyte),
-                ("bNumEndpoints", ctypes.c_ubyte), ("bInterfaceClass", ctypes.c_ubyte),
-                ("bInterfaceSubClass", ctypes.c_ubyte), ("bInterfaceProtocol", ctypes.c_ubyte),
-                ("iInterface", ctypes.c_ubyte)]
+    _fields_ = [
+        ("bLength", ctypes.c_ubyte),
+        ("bDescriptorType", ctypes.c_ubyte),
+        ("bInterfaceNumber", ctypes.c_ubyte),
+        ("bAlternateSetting", ctypes.c_ubyte),
+        ("bNumEndpoints", ctypes.c_ubyte),
+        ("bInterfaceClass", ctypes.c_ubyte),
+        ("bInterfaceSubClass", ctypes.c_ubyte),
+        ("bInterfaceProtocol", ctypes.c_ubyte),
+        ("iInterface", ctypes.c_ubyte),
+    ]
 
 
 class WINUSB_PIPE_INFORMATION(ctypes.Structure):
-    _fields_ = [("PipeType", ctypes.c_int), ("PipeId", ctypes.c_ubyte),
-                ("MaximumPacketSize", ctypes.c_ushort), ("Interval", ctypes.c_ubyte)]
+    _fields_ = [
+        ("PipeType", ctypes.c_int),
+        ("PipeId", ctypes.c_ubyte),
+        ("MaximumPacketSize", ctypes.c_ushort),
+        ("Interval", ctypes.c_ubyte),
+    ]
 
 
 _HANDLE = ctypes.c_void_p
@@ -82,38 +97,76 @@ def _proto(dll, name, restype, *argtypes):
     return fn
 
 
-_SetupDiGetClassDevsW = _proto(_setupapi, "SetupDiGetClassDevsW", ctypes.c_void_p,
-                               ctypes.POINTER(GUID), wt.LPCWSTR, wt.HWND, wt.DWORD)
-_SetupDiEnumDeviceInterfaces = _proto(_setupapi, "SetupDiEnumDeviceInterfaces", wt.BOOL, ctypes.c_void_p,
-                                      ctypes.c_void_p, ctypes.POINTER(GUID), wt.DWORD,
-                                      ctypes.POINTER(SP_DEVICE_INTERFACE_DATA))
-_SetupDiGetDeviceInterfaceDetailW = _proto(_setupapi, "SetupDiGetDeviceInterfaceDetailW", wt.BOOL, ctypes.c_void_p,
-                                           ctypes.POINTER(SP_DEVICE_INTERFACE_DATA), ctypes.c_void_p, wt.DWORD,
-                                           ctypes.POINTER(wt.DWORD), ctypes.c_void_p)
+_SetupDiGetClassDevsW = _proto(
+    _setupapi, "SetupDiGetClassDevsW", ctypes.c_void_p, ctypes.POINTER(GUID), wt.LPCWSTR, wt.HWND, wt.DWORD
+)
+_SetupDiEnumDeviceInterfaces = _proto(
+    _setupapi,
+    "SetupDiEnumDeviceInterfaces",
+    wt.BOOL,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.POINTER(GUID),
+    wt.DWORD,
+    ctypes.POINTER(SP_DEVICE_INTERFACE_DATA),
+)
+_SetupDiGetDeviceInterfaceDetailW = _proto(
+    _setupapi,
+    "SetupDiGetDeviceInterfaceDetailW",
+    wt.BOOL,
+    ctypes.c_void_p,
+    ctypes.POINTER(SP_DEVICE_INTERFACE_DATA),
+    ctypes.c_void_p,
+    wt.DWORD,
+    ctypes.POINTER(wt.DWORD),
+    ctypes.c_void_p,
+)
 _SetupDiDestroyDeviceInfoList = _proto(_setupapi, "SetupDiDestroyDeviceInfoList", wt.BOOL, ctypes.c_void_p)
-_CreateFileW = _proto(_kernel32, "CreateFileW", _HANDLE, wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p,
-                      wt.DWORD, wt.DWORD, _HANDLE)
+_CreateFileW = _proto(
+    _kernel32, "CreateFileW", _HANDLE, wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, _HANDLE
+)
 _CloseHandle = _proto(_kernel32, "CloseHandle", wt.BOOL, _HANDLE)
 _WinUsb_Initialize = _proto(_winusb, "WinUsb_Initialize", wt.BOOL, _HANDLE, ctypes.POINTER(_HANDLE))
 _WinUsb_Free = _proto(_winusb, "WinUsb_Free", wt.BOOL, _HANDLE)
-_WinUsb_GetAssociatedInterface = _proto(_winusb, "WinUsb_GetAssociatedInterface", wt.BOOL, _HANDLE,
-                                        ctypes.c_ubyte, ctypes.POINTER(_HANDLE))
-_WinUsb_QueryInterfaceSettings = _proto(_winusb, "WinUsb_QueryInterfaceSettings", wt.BOOL, _HANDLE,
-                                        ctypes.c_ubyte, ctypes.POINTER(USB_INTERFACE_DESCRIPTOR))
-_WinUsb_QueryPipe = _proto(_winusb, "WinUsb_QueryPipe", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.c_ubyte,
-                           ctypes.POINTER(WINUSB_PIPE_INFORMATION))
-_WinUsb_SetCurrentAlternateSetting = _proto(_winusb, "WinUsb_SetCurrentAlternateSetting", wt.BOOL, _HANDLE,
-                                            ctypes.c_ubyte)
-_WinUsb_ControlTransfer = _proto(_winusb, "WinUsb_ControlTransfer", wt.BOOL, _HANDLE, WINUSB_SETUP_PACKET,
-                                 ctypes.c_void_p, wt.ULONG, _ULONG_P, ctypes.c_void_p)
-_WinUsb_ReadPipe = _proto(_winusb, "WinUsb_ReadPipe", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.c_void_p,
-                          wt.ULONG, _ULONG_P, ctypes.c_void_p)
-_WinUsb_WritePipe = _proto(_winusb, "WinUsb_WritePipe", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.c_void_p,
-                           wt.ULONG, _ULONG_P, ctypes.c_void_p)
-_WinUsb_SetPipePolicy = _proto(_winusb, "WinUsb_SetPipePolicy", wt.BOOL, _HANDLE, ctypes.c_ubyte, wt.ULONG,
-                               wt.ULONG, ctypes.c_void_p)
-_WinUsb_SetPowerPolicy = _proto(_winusb, "WinUsb_SetPowerPolicy", wt.BOOL, _HANDLE, wt.ULONG, wt.ULONG,
-                                ctypes.c_void_p)
+_WinUsb_GetAssociatedInterface = _proto(
+    _winusb, "WinUsb_GetAssociatedInterface", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.POINTER(_HANDLE)
+)
+_WinUsb_QueryInterfaceSettings = _proto(
+    _winusb, "WinUsb_QueryInterfaceSettings", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.POINTER(USB_INTERFACE_DESCRIPTOR)
+)
+_WinUsb_QueryPipe = _proto(
+    _winusb,
+    "WinUsb_QueryPipe",
+    wt.BOOL,
+    _HANDLE,
+    ctypes.c_ubyte,
+    ctypes.c_ubyte,
+    ctypes.POINTER(WINUSB_PIPE_INFORMATION),
+)
+_WinUsb_SetCurrentAlternateSetting = _proto(
+    _winusb, "WinUsb_SetCurrentAlternateSetting", wt.BOOL, _HANDLE, ctypes.c_ubyte
+)
+_WinUsb_ControlTransfer = _proto(
+    _winusb,
+    "WinUsb_ControlTransfer",
+    wt.BOOL,
+    _HANDLE,
+    WINUSB_SETUP_PACKET,
+    ctypes.c_void_p,
+    wt.ULONG,
+    _ULONG_P,
+    ctypes.c_void_p,
+)
+_WinUsb_ReadPipe = _proto(
+    _winusb, "WinUsb_ReadPipe", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.c_void_p, wt.ULONG, _ULONG_P, ctypes.c_void_p
+)
+_WinUsb_WritePipe = _proto(
+    _winusb, "WinUsb_WritePipe", wt.BOOL, _HANDLE, ctypes.c_ubyte, ctypes.c_void_p, wt.ULONG, _ULONG_P, ctypes.c_void_p
+)
+_WinUsb_SetPipePolicy = _proto(
+    _winusb, "WinUsb_SetPipePolicy", wt.BOOL, _HANDLE, ctypes.c_ubyte, wt.ULONG, wt.ULONG, ctypes.c_void_p
+)
+_WinUsb_SetPowerPolicy = _proto(_winusb, "WinUsb_SetPowerPolicy", wt.BOOL, _HANDLE, wt.ULONG, wt.ULONG, ctypes.c_void_p)
 _WinUsb_AbortPipe = _proto(_winusb, "WinUsb_AbortPipe", wt.BOOL, _HANDLE, ctypes.c_ubyte)
 
 
@@ -194,8 +247,10 @@ class Interface:
 
     def pipes(self, alt):
         desc = USB_INTERFACE_DESCRIPTOR()
-        _check(_WinUsb_QueryInterfaceSettings(self.handle, alt, ctypes.byref(desc)),
-               f"query interface {self.number} alt {alt}")
+        _check(
+            _WinUsb_QueryInterfaceSettings(self.handle, alt, ctypes.byref(desc)),
+            f"query interface {self.number} alt {alt}",
+        )
         pipes = []
         for i in range(desc.bNumEndpoints):
             info = WINUSB_PIPE_INFORMATION()
@@ -210,21 +265,27 @@ class Interface:
         buf = ctypes.create_string_buffer(length)
         done = wt.ULONG()
         setup = WINUSB_SETUP_PACKET(request_type, request, value, index, length)
-        _check(_WinUsb_ControlTransfer(self.handle, setup, buf, length, ctypes.byref(done), None),
-               f"control request 0x{request:02x}")
-        return buf.raw[:done.value]
+        _check(
+            _WinUsb_ControlTransfer(self.handle, setup, buf, length, ctypes.byref(done), None),
+            f"control request 0x{request:02x}",
+        )
+        return buf.raw[: done.value]
 
     def control_out(self, request_type, request, value, index, data=b""):
         buf = ctypes.create_string_buffer(data, len(data)) if data else None
         done = wt.ULONG()
         setup = WINUSB_SETUP_PACKET(request_type, request, value, index, len(data))
-        _check(_WinUsb_ControlTransfer(self.handle, setup, buf, len(data), ctypes.byref(done), None),
-               f"control request 0x{request:02x}")
+        _check(
+            _WinUsb_ControlTransfer(self.handle, setup, buf, len(data), ctypes.byref(done), None),
+            f"control request 0x{request:02x}",
+        )
 
     def set_pipe_policy(self, pipe, policy, value):
         v = wt.ULONG(value) if policy == PIPE_TRANSFER_TIMEOUT else ctypes.c_ubyte(value)
-        _check(_WinUsb_SetPipePolicy(self.handle, pipe, policy, ctypes.sizeof(v), ctypes.byref(v)),
-               f"set pipe policy {policy} on 0x{pipe:02x}")
+        _check(
+            _WinUsb_SetPipePolicy(self.handle, pipe, policy, ctypes.sizeof(v), ctypes.byref(v)),
+            f"set pipe policy {policy} on 0x{pipe:02x}",
+        )
 
     def read_into(self, pipe, buffer):
         """Read one transfer into a bytearray. Returns the byte count, or None on timeout."""
@@ -280,8 +341,10 @@ class WinUsbDevice:
 
     def disable_selective_suspend(self):
         off = ctypes.c_ubyte(0)
-        _check(_WinUsb_SetPowerPolicy(self._handles[0], AUTO_SUSPEND, 1, ctypes.byref(off)),
-               "disable USB selective suspend")
+        _check(
+            _WinUsb_SetPowerPolicy(self._handles[0], AUTO_SUSPEND, 1, ctypes.byref(off)),
+            "disable USB selective suspend",
+        )
 
     def close(self):
         for handle in reversed(self._handles):
@@ -302,5 +365,6 @@ def open_device(vid, pid):
             return WinUsbDevice(path)
         except OSError as e:
             errors.append(str(e))
-    raise WinUsbError(1, f"device {vid:04x}:{pid:04x} is connected but could not be opened with WinUSB "
-                         f"({'; '.join(errors)})")
+    raise WinUsbError(
+        1, f"device {vid:04x}:{pid:04x} is connected but could not be opened with WinUSB ({'; '.join(errors)})"
+    )

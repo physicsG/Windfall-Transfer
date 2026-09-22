@@ -7,15 +7,24 @@ LOCAL, MAC = "169.254.77.10", "169.254.21.56"
 
 
 def adapter(connected=True, description="USB4(TM) P2P Network Adapter", out_octets=0, in_octets=0):
-    return Interface(index=42, alias="Ethernet 7", description=description, connected=connected,
-                     tx_speed=20_000_000_000, rx_speed=20_000_000_000, in_octets=in_octets,
-                     out_octets=out_octets, mtu=62000)
+    return Interface(
+        index=42,
+        alias="Ethernet 7",
+        description=description,
+        connected=connected,
+        tx_speed=20_000_000_000,
+        rx_speed=20_000_000_000,
+        in_octets=in_octets,
+        out_octets=out_octets,
+        mtu=62000,
+    )
 
 
 class FakeNet:
     def __init__(self):
-        self.ifaces = [Interface(1, "Wi-Fi", "Intel(R) Wi-Fi 6E AX211 160MHz", True, 144_400_000, 144_400_000,
-                                 0, 0, 1500)]
+        self.ifaces = [
+            Interface(1, "Wi-Fi", "Intel(R) Wi-Fi 6E AX211 160MHz", True, 144_400_000, 144_400_000, 0, 0, 1500)
+        ]
         self.addresses = [("127.0.0.1", 8, 1)]
         self.seen = []
 
@@ -58,8 +67,10 @@ class Usb4MonitorTests(unittest.TestCase):
             self.monitor.check(now=2)  # too soon to search again
             self.assertEqual(self.monitor.state, Usb4Monitor.SEARCHING)
             self.monitor.check(now=6)
-        self.assertEqual((self.monitor.state, self.monitor.mac_ip, self.monitor.mac_name),
-                         (Usb4Monitor.FOUND, MAC, "Alex's MacBook Pro"))
+        self.assertEqual(
+            (self.monitor.state, self.monitor.mac_ip, self.monitor.mac_name),
+            (Usb4Monitor.FOUND, MAC, "Alex's MacBook Pro"),
+        )
         self.assertEqual(self.queries, [(LOCAL, {"127.0.0.1", LOCAL})])
         self.assertIn("found the Mac on Thunderbolt/USB4 at 169.254.21.56", "\n".join(logs.output))
         self.assertEqual(speed_text(self.monitor.link_speed), "20 Gbps")
@@ -91,8 +102,9 @@ class Usb4MonitorTests(unittest.TestCase):
         self.net.ifaces[-1] = adapter(connected=False)
         with self.assertLogs("bridge", "INFO") as logs:
             self.monitor.check(now=3)
-        self.assertEqual((self.monitor.state, self.monitor.mac_ip, self.monitor.rates),
-                         (Usb4Monitor.DOWN, None, (0.0, 0.0)))
+        self.assertEqual(
+            (self.monitor.state, self.monitor.mac_ip, self.monitor.rates), (Usb4Monitor.DOWN, None, (0.0, 0.0))
+        )
         self.assertIn("Thunderbolt/USB4 link is down", "\n".join(logs.output))
 
 

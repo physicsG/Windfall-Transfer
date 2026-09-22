@@ -6,11 +6,11 @@ from dataclasses import dataclass
 
 from .winusb import PIPE_BULK, PIPE_TRANSFER_TIMEOUT, SHORT_PACKET_TERMINATE
 
-NTH16 = 0x484D434E      # "NCMH"
-NDP16 = 0x304D434E      # "NCM0" (no CRC)
+NTH16 = 0x484D434E  # "NCMH"
+NDP16 = 0x304D434E  # "NCM0" (no CRC)
 NDP16_CRC = 0x314D434E  # "NCM1"
-NTH32 = 0x686D636E      # "ncmh"
-NDP32 = 0x306D636E      # "ncm0"
+NTH32 = 0x686D636E  # "ncmh"
+NDP32 = 0x306D636E  # "ncm0"
 NDP32_CRC = 0x316D636E  # "ncm1"
 
 SET_ETHERNET_PACKET_FILTER = 0x43
@@ -22,7 +22,7 @@ FILTER_ALL_MULTICAST = 0x02
 FILTER_DIRECTED = 0x04
 FILTER_BROADCAST = 0x08
 
-CLASS_IN = 0xA1   # device-to-host | class | interface
+CLASS_IN = 0xA1  # device-to-host | class | interface
 CLASS_OUT = 0x21  # host-to-device | class | interface
 
 
@@ -41,8 +41,9 @@ class NtbParameters:
 
     @classmethod
     def parse(cls, data):
-        (_, formats, in_max, in_div, in_rem, in_align, _,
-         out_max, out_div, out_rem, out_align, out_max_dg) = struct.unpack_from("<HHIHHHHIHHHH", data)
+        (_, formats, in_max, in_div, in_rem, in_align, _, out_max, out_div, out_rem, out_align, out_max_dg) = (
+            struct.unpack_from("<HHIHHHHIHHHH", data)
+        )
         return cls(formats, in_max, in_div, in_rem, in_align, out_max, out_div, out_rem, out_align, out_max_dg)
 
 
@@ -70,7 +71,7 @@ def parse_ntb(buf):
                     break
                 if index + length > end:
                     raise ValueError("datagram outside NTB")
-                frames.append(bytes(buf[index:index + length - crc]))
+                frames.append(bytes(buf[index : index + length - crc]))
             ndp = next_ndp
     elif sig == NTH32:
         _, _, block_len, ndp = struct.unpack_from("<HHII", buf, 4)
@@ -90,7 +91,7 @@ def parse_ntb(buf):
                     break
                 if index + length > end:
                     raise ValueError("datagram outside NTB")
-                frames.append(bytes(buf[index:index + length - crc]))
+                frames.append(bytes(buf[index : index + length - crc]))
             ndp = next_ndp
     else:
         raise ValueError(f"bad NTB signature {sig:#x}")
@@ -115,7 +116,7 @@ def build_ntb16(frames, sequence, params):
     struct.pack_into("<IHH", ntb, ndp_off, NDP16, ndp_len, 0)
     for i, ((start, length), frame) in enumerate(zip(entries, frames)):
         struct.pack_into("<HH", ntb, ndp_off + 8 + 4 * i, start, length)
-        ntb[start:start + length] = frame
+        ntb[start : start + length] = frame
     return bytes(ntb)
 
 
@@ -166,8 +167,12 @@ class NcmFunction:
         except (OSError, struct.error) as e:
             self.notes.append(f"GET_MAX_DATAGRAM_SIZE failed ({e})")
         try:
-            self.control.control_out(CLASS_OUT, SET_ETHERNET_PACKET_FILTER,
-                                     FILTER_DIRECTED | FILTER_BROADCAST | FILTER_ALL_MULTICAST, self.control.number)
+            self.control.control_out(
+                CLASS_OUT,
+                SET_ETHERNET_PACKET_FILTER,
+                FILTER_DIRECTED | FILTER_BROADCAST | FILTER_ALL_MULTICAST,
+                self.control.number,
+            )
         except OSError as e:
             self.notes.append(f"SET_ETHERNET_PACKET_FILTER failed ({e})")
 

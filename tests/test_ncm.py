@@ -8,8 +8,10 @@ FRAMES = [bytes(range(60)), b"x" * 1514, b"y" * 101, b"z" * 16014]
 
 class NtbTests(unittest.TestCase):
     def test_ntb16_round_trip_respects_alignment(self):
-        for params in (NtbParameters(out_max=32764, out_divisor=4, out_remainder=2, out_alignment=4),
-                       NtbParameters(out_max=32764, out_divisor=1, out_remainder=0, out_alignment=8)):
+        for params in (
+            NtbParameters(out_max=32764, out_divisor=4, out_remainder=2, out_alignment=4),
+            NtbParameters(out_max=32764, out_divisor=1, out_remainder=0, out_alignment=8),
+        ):
             ntb = build_ntb16(FRAMES, 7, params)
             self.assertEqual(parse_ntb(ntb), FRAMES)
             ndp = struct.unpack_from("<H", ntb, 10)[0]

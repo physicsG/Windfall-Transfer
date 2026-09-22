@@ -44,7 +44,7 @@ def read_name(msg, offset):
         offset += 1
         if length == 0:
             return ".".join(labels), (offset if end is None else end)
-        labels.append(msg[offset:offset + length].decode("utf-8", "replace"))
+        labels.append(msg[offset : offset + length].decode("utf-8", "replace"))
         offset += length
 
 
@@ -71,7 +71,7 @@ def parse_response(msg):
         elif rtype == TYPE_SRV and length > 6:
             data = read_name(msg, start + 6)[0]
         elif rtype == TYPE_A and length == 4:
-            data = socket.inet_ntoa(msg[start:start + 4])
+            data = socket.inet_ntoa(msg[start : start + 4])
         else:
             data = None
         records.append((name, rtype, data))
@@ -82,11 +82,11 @@ def friendly_name(records):
     """The responder's name: its file-sharing name ("Alex's MacBook Pro") or else its host name."""
     for _, rtype, data in records:
         if rtype == TYPE_PTR and data and data.endswith("._smb._tcp.local"):
-            return data[:-len("._smb._tcp.local")]
+            return data[: -len("._smb._tcp.local")]
     for name, rtype, data in records:
         host = data if rtype == TYPE_SRV else name if rtype == TYPE_A else None
         if host and host.endswith(".local"):
-            return host[:-len(".local")]
+            return host[: -len(".local")]
     return None
 
 

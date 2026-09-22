@@ -81,16 +81,28 @@ class Probe:
                 body = info["icmp_body"]
                 ident, seq = struct.unpack_from("!HH", body)
                 self.pinged_by_mac += 1
-                self.send(pk.echo6(self.our_mac, self.our_ll, info["src_mac"], src, ident, seq,
-                                   reply=True, data=body[4:]))
+                self.send(
+                    pk.echo6(self.our_mac, self.our_ll, info["src_mac"], src, ident, seq, reply=True, data=body[4:])
+                )
             elif kind == 129 and dst == self.our_ll:
                 self.ping6.add(pk.ip_str(src))
         elif proto == pk.PROTO_TCP and dst == self.our_ll and info.get("sport") in TCP_PORTS:
             port, flags = info["sport"], info["tcp_flags"]
             if flags & (pk.TCP_SYN | pk.TCP_ACK) == pk.TCP_SYN | pk.TCP_ACK:
                 self.tcp[port] = "OPEN - accepts connections over this cable"
-                self.send(pk.tcp6(self.our_mac, self.our_ll, info["src_mac"], src, info["dport"], port,
-                                  info["tcp_ack"], 0, pk.TCP_RST))
+                self.send(
+                    pk.tcp6(
+                        self.our_mac,
+                        self.our_ll,
+                        info["src_mac"],
+                        src,
+                        info["dport"],
+                        port,
+                        info["tcp_ack"],
+                        0,
+                        pk.TCP_RST,
+                    )
+                )
             elif flags & pk.TCP_RST:
                 self.tcp.setdefault(port, "closed - reachable, but nothing listening")
         elif proto == pk.PROTO_UDP and info.get("dport") == 547:
@@ -119,21 +131,32 @@ class Probe:
                 body = info["icmp_body"]
                 ident, seq = struct.unpack_from("!HH", body)
                 self.pinged_by_mac += 1
-                self.send(pk.echo4(self.our_mac, self.our_v4, info["src_mac"], src, ident, seq,
-                                   reply=True, data=body[4:]))
+                self.send(
+                    pk.echo4(self.our_mac, self.our_v4, info["src_mac"], src, ident, seq, reply=True, data=body[4:])
+                )
 
     def tick(self, n):
         # All-nodes ping: the Mac answers from its link-local address even before we know it.
-        self.send(pk.echo6(self.our_mac, self.our_ll, pk.ipv6_multicast_mac(pk.ALL_NODES), pk.ALL_NODES,
-                           PING_ID, n))
+        self.send(pk.echo6(self.our_mac, self.our_ll, pk.ipv6_multicast_mac(pk.ALL_NODES), pk.ALL_NODES, PING_ID, n))
         if self.peer_ll and self.peer_mac:
             self.send(pk.echo6(self.our_mac, self.our_ll, self.peer_mac, self.peer_ll, PING_ID, 1000 + n))
             if self.tcp_attempts < 3 and len(self.tcp) < len(TCP_PORTS):
                 self.tcp_attempts += 1
                 for i, port in enumerate(TCP_PORTS):
                     if port not in self.tcp:
-                        self.send(pk.tcp6(self.our_mac, self.our_ll, self.peer_mac, self.peer_ll,
-                                          40000 + i, port, self.tcp_seq, 0, pk.TCP_SYN))
+                        self.send(
+                            pk.tcp6(
+                                self.our_mac,
+                                self.our_ll,
+                                self.peer_mac,
+                                self.peer_ll,
+                                40000 + i,
+                                port,
+                                self.tcp_seq,
+                                0,
+                                pk.TCP_SYN,
+                            )
+                        )
         if self.peer_mac:
             for addr in self.peer_v4:
                 self.send(pk.echo4(self.our_mac, self.our_v4, self.peer_mac, addr, PING_ID, n))
@@ -141,16 +164,22 @@ class Probe:
     def summary(self, out):
         fn, p = self.fn, self.fn.params
         out(f"\n=== Function {fn.name} (USB interfaces {fn.control.number}+{fn.data.number}) ===")
-        out(f"  NTB limits: in {p.in_max} B, out {p.out_max} B, out divisor {p.out_divisor} rem {p.out_remainder}, "
-            f"align {p.out_alignment}, max datagrams {p.out_max_datagrams or 'any'}, formats 0x{p.formats:x}")
-        out(f"  our MAC {pk.mac_str(self.our_mac)} ({'from the Mac' if fn.host_mac else 'made up'}), "
-            f"max datagram {fn.max_datagram}")
+        out(
+            f"  NTB limits: in {p.in_max} B, out {p.out_max} B, out divisor {p.out_divisor} rem {p.out_remainder}, "
+            f"align {p.out_alignment}, max datagrams {p.out_max_datagrams or 'any'}, formats 0x{p.formats:x}"
+        )
+        out(
+            f"  our MAC {pk.mac_str(self.our_mac)} ({'from the Mac' if fn.host_mac else 'made up'}), "
+            f"max datagram {fn.max_datagram}"
+        )
         for note in fn.notes:
             out(f"  note: {note}")
         out(f"  frames received {self.rx}, sent {self.tx}")
-        out(f"  Mac: MAC {pk.mac_str(self.peer_mac) if self.peer_mac else '-'}, "
+        out(
+            f"  Mac: MAC {pk.mac_str(self.peer_mac) if self.peer_mac else '-'}, "
             f"IPv6 {pk.ip_str(self.peer_ll) if self.peer_ll else '-'}, "
-            f"IPv4 {', '.join(pk.ip_str(a) for a in self.peer_v4) or '-'}")
+            f"IPv4 {', '.join(pk.ip_str(a) for a in self.peer_v4) or '-'}"
+        )
         if self.kinds:
             out("  what the Mac sent (most common first):")
             for text, count in self.kinds.most_common(12):
@@ -229,8 +258,10 @@ def main():
                 log(f"[{fn.name}] could not start: {e}")
                 continue
             functions.append(fn)
-            log(f"[{fn.name}] link up on interfaces {control}+{data} "
-                f"(bulk IN 0x{fn.pipe_in:02x}, OUT 0x{fn.pipe_out:02x})")
+            log(
+                f"[{fn.name}] link up on interfaces {control}+{data} "
+                f"(bulk IN 0x{fn.pipe_in:02x}, OUT 0x{fn.pipe_out:02x})"
+            )
         if not functions:
             print("No NCM function could be started.")
             return 1

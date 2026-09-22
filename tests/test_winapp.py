@@ -15,18 +15,23 @@ class UnpackedFolderTests(unittest.TestCase):
             return winapp.unpacked_folder()
 
     def test_only_ever_program_files_windfall(self):
-        self.assertEqual(self.unpacked(r"C:\Program Files\Windfall Transfer\app-0123456789ab"),
-                         r"C:\Program Files\Windfall Transfer")
-        self.assertEqual(self.unpacked(r"c:\program files\windfall transfer\app-0123456789ab\\"),
-                         r"c:\program files\windfall transfer")
+        self.assertEqual(
+            self.unpacked(r"C:\Program Files\Windfall Transfer\app-0123456789ab"), r"C:\Program Files\Windfall Transfer"
+        )
+        self.assertEqual(
+            self.unpacked(r"c:\program files\windfall transfer\app-0123456789ab\\"),
+            r"c:\program files\windfall transfer",
+        )
         self.assertIsNone(self.unpacked(r"C:\Users\me\AppData\Local\Temp\Windfall Transfer\app-0123456789ab"))
         self.assertIsNone(self.unpacked(r"C:\Program Files\Other\app-0123456789ab"))
         self.assertIsNone(self.unpacked(r"C:\Program Files\app-0123456789ab"))
         self.assertIsNone(self.unpacked(None))
 
     def test_earlier_unpacked_copy_is_only_ours_if_it_holds_nothing_else(self):
-        with tempfile.TemporaryDirectory() as program_files, \
-                mock.patch.dict(os.environ, {"ProgramW6432": program_files}):
+        with (
+            tempfile.TemporaryDirectory() as program_files,
+            mock.patch.dict(os.environ, {"ProgramW6432": program_files}),
+        ):
             folder = os.path.join(program_files, "Connect App")
             self.assertIsNone(winapp.legacy_unpacked_folder())  # not there
             os.makedirs(os.path.join(folder, "app-0123456789ab"))

@@ -144,16 +144,26 @@ class Session:
 
 # ---- IP Helper: address and index of the adapter ----
 
+
 class SOCKADDR_INET(ctypes.Structure):
     _fields_ = [("si_family", ctypes.c_ushort), ("data", ctypes.c_ubyte * 26)]
 
 
 class MIB_UNICASTIPADDRESS_ROW(ctypes.Structure):
-    _fields_ = [("Address", SOCKADDR_INET), ("InterfaceLuid", ctypes.c_uint64), ("InterfaceIndex", ctypes.c_ulong),
-                ("PrefixOrigin", ctypes.c_int), ("SuffixOrigin", ctypes.c_int), ("ValidLifetime", ctypes.c_ulong),
-                ("PreferredLifetime", ctypes.c_ulong), ("OnLinkPrefixLength", ctypes.c_ubyte),
-                ("SkipAsSource", ctypes.c_ubyte), ("DadState", ctypes.c_int), ("ScopeId", ctypes.c_ulong),
-                ("CreationTimeStamp", ctypes.c_int64)]
+    _fields_ = [
+        ("Address", SOCKADDR_INET),
+        ("InterfaceLuid", ctypes.c_uint64),
+        ("InterfaceIndex", ctypes.c_ulong),
+        ("PrefixOrigin", ctypes.c_int),
+        ("SuffixOrigin", ctypes.c_int),
+        ("ValidLifetime", ctypes.c_ulong),
+        ("PreferredLifetime", ctypes.c_ulong),
+        ("OnLinkPrefixLength", ctypes.c_ubyte),
+        ("SkipAsSource", ctypes.c_ubyte),
+        ("DadState", ctypes.c_int),
+        ("ScopeId", ctypes.c_ulong),
+        ("CreationTimeStamp", ctypes.c_int64),
+    ]
 
 
 assert ctypes.sizeof(MIB_UNICASTIPADDRESS_ROW) == 80

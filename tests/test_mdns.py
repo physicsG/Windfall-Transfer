@@ -40,10 +40,14 @@ class MdnsTests(unittest.TestCase):
         self.assertEqual(tuple(names), mdns.QUESTIONS)
 
     def test_parses_compressed_records(self):
-        self.assertEqual(mdns.parse_response(smb_response()), [
-            ("_smb._tcp.local", mdns.TYPE_PTR, f"{INSTANCE}._smb._tcp.local"),
-            (f"{INSTANCE}._smb._tcp.local", mdns.TYPE_SRV, "Alexs-MacBook-Pro.local"),
-            ("Alexs-MacBook-Pro.local", mdns.TYPE_A, "169.254.21.56")])
+        self.assertEqual(
+            mdns.parse_response(smb_response()),
+            [
+                ("_smb._tcp.local", mdns.TYPE_PTR, f"{INSTANCE}._smb._tcp.local"),
+                (f"{INSTANCE}._smb._tcp.local", mdns.TYPE_SRV, "Alexs-MacBook-Pro.local"),
+                ("Alexs-MacBook-Pro.local", mdns.TYPE_A, "169.254.21.56"),
+            ],
+        )
 
     def test_friendly_name_prefers_the_file_sharing_name(self):
         records = mdns.parse_response(smb_response())

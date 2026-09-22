@@ -1,6 +1,6 @@
 """Create .venv with the development tools from pyproject.toml's dev dependency group.
 
-    python tools/setup_dev.py
+python tools/setup_dev.py
 """
 
 import subprocess
@@ -21,7 +21,9 @@ def main() -> None:
     python = VENV / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(VENV)
-    subprocess.run([python, "-m", "pip", "install", "--disable-pip-version-check", "--quiet", *requirements], check=True)
+    subprocess.run(
+        [python, "-m", "pip", "install", "--disable-pip-version-check", "--quiet", *requirements], check=True
+    )
     print(f"{VENV} is ready: {', '.join(requirements)}")
 
 

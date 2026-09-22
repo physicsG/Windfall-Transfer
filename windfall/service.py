@@ -86,13 +86,13 @@ class Bridge:
             self._arp(frame)
             return
         if ethertype == pk.ETH_IPV4 and len(payload) >= 20:
-            packet = payload[:(payload[2] << 8) | payload[3]]  # drop Ethernet padding
+            packet = payload[: (payload[2] << 8) | payload[3]]  # drop Ethernet padding
             if any(packet[12:16]):
                 self.peer_addresses.add(packet[12:16])
             if packet[9] == pk.PROTO_UDP and self._dhcp(packet):
                 return
         elif ethertype == pk.ETH_IPV6 and len(payload) >= 40:
-            packet = payload[:40 + ((payload[4] << 8) | payload[5])]
+            packet = payload[: 40 + ((payload[4] << 8) | payload[5])]
             if any(packet[8:24]):
                 self.peer_addresses.add(packet[8:24])
             if packet[6] == pk.PROTO_ICMPV6 and self._neighbor_solicitation(packet, src_mac):
@@ -207,8 +207,10 @@ class Bridge:
 
 
 def _rates(before, after, seconds):
-    return ((after["to_mac_bytes"] - before["to_mac_bytes"]) / seconds / 1e6,
-            (after["to_windows_bytes"] - before["to_windows_bytes"]) / seconds / 1e6)
+    return (
+        (after["to_mac_bytes"] - before["to_mac_bytes"]) / seconds / 1e6,
+        (after["to_windows_bytes"] - before["to_windows_bytes"]) / seconds / 1e6,
+    )
 
 
 class BridgeService:
@@ -260,16 +262,21 @@ class BridgeService:
 
     def _run(self):
         try:
-            wintun = Wintun(self.wintun_dll, log=lambda level, message: log.log(
-                logging.WARNING if level else logging.DEBUG, "wintun: %s", message))
+            wintun = Wintun(
+                self.wintun_dll,
+                log=lambda level, message: log.log(logging.WARNING if level else logging.DEBUG, "wintun: %s", message),
+            )
             log.info("creating network adapter '%s'...", ADAPTER_NAME)
             adapter = wintun.create_adapter(ADAPTER_NAME, "WindfallTransfer", ADAPTER_GUID)
             try:
                 add_ipv4_address(adapter.luid, self.windows_ip.packed, self.prefix)
                 index = interface_index(adapter.luid)
                 for family in ("ipv4", "ipv6"):
-                    subprocess.run(["netsh", "interface", family, "set", "subinterface", str(index), "mtu=1500",
-                                    "store=active"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    subprocess.run(
+                        ["netsh", "interface", family, "set", "subinterface", str(index), "mtu=1500", "store=active"],
+                        capture_output=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                    )
                 log.info("this PC is %s on the cable; the Mac gets %s", self.windows_ip, self.mac_ip)
                 self._serve(adapter)
             finally:
@@ -347,8 +354,10 @@ class BridgeService:
             log.info("note: %s", note)
 
         bridge = Bridge(fn, session, self.windows_ip.packed, self.mac_ip.packed, self.network.netmask.packed)
-        threads = [threading.Thread(target=bridge.usb_loop, name="usb", daemon=True),
-                   threading.Thread(target=bridge.tun_loop, name="tun", daemon=True)]
+        threads = [
+            threading.Thread(target=bridge.usb_loop, name="usb", daemon=True),
+            threading.Thread(target=bridge.tun_loop, name="tun", daemon=True),
+        ]
         for t in threads:
             t.start()
         self._bridge = bridge

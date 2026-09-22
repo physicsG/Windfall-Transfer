@@ -22,8 +22,8 @@ def speed_text(bits_per_second):
 
 class Usb4Monitor:
     ABSENT, DOWN, SEARCHING, FOUND = "absent", "down", "searching", "found"
-    SEARCH_EVERY = 5.0     # seconds between attempts while looking for the Mac
-    RECHECK_EVERY = 60.0   # re-confirm the Mac's address this often once found
+    SEARCH_EVERY = 5.0  # seconds between attempts while looking for the Mac
+    RECHECK_EVERY = 60.0  # re-confirm the Mac's address this often once found
 
     def __init__(self, manual_mac_ip="", net=netinfo, discover=mdns.discover, poll_seconds=2.0):
         self.manual_mac_ip = (manual_mac_ip or "").strip()

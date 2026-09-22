@@ -88,9 +88,11 @@ def legacy_unpacked_folder():
 
 def delete_after_exit(folder, seconds=5):
     """Delete a folder shortly after this process exits (its own files stay in use until then)."""
-    subprocess.Popen(f'cmd.exe /d /c ping -n {seconds + 1} 127.0.0.1 >nul & rmdir /s /q "{folder}"',
-                     creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
-                     close_fds=True)
+    subprocess.Popen(
+        f'cmd.exe /d /c ping -n {seconds + 1} 127.0.0.1 >nul & rmdir /s /q "{folder}"',
+        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+        close_fds=True,
+    )
 
 
 def set_app_id(app_id):

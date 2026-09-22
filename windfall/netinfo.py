@@ -18,29 +18,61 @@ _iphlpapi = ctypes.WinDLL("iphlpapi", use_last_error=True)
 
 class MIB_IF_ROW2(ctypes.Structure):
     _fields_ = [
-        ("InterfaceLuid", ctypes.c_uint64), ("InterfaceIndex", ctypes.c_ulong), ("InterfaceGuid", GUID),
-        ("Alias", ctypes.c_wchar * 257), ("Description", ctypes.c_wchar * 257),
-        ("PhysicalAddressLength", ctypes.c_ulong), ("PhysicalAddress", ctypes.c_ubyte * 32),
-        ("PermanentPhysicalAddress", ctypes.c_ubyte * 32), ("Mtu", ctypes.c_ulong), ("Type", ctypes.c_ulong),
-        ("TunnelType", ctypes.c_int), ("MediaType", ctypes.c_int), ("PhysicalMediumType", ctypes.c_int),
-        ("AccessType", ctypes.c_int), ("DirectionType", ctypes.c_int), ("InterfaceAndOperStatusFlags", ctypes.c_ubyte),
-        ("OperStatus", ctypes.c_int), ("AdminStatus", ctypes.c_int), ("MediaConnectState", ctypes.c_int),
-        ("NetworkGuid", GUID), ("ConnectionType", ctypes.c_int),
-        ("TransmitLinkSpeed", ctypes.c_uint64), ("ReceiveLinkSpeed", ctypes.c_uint64),
-        ("InOctets", ctypes.c_uint64), ("InUcastPkts", ctypes.c_uint64), ("InNUcastPkts", ctypes.c_uint64),
-        ("InDiscards", ctypes.c_uint64), ("InErrors", ctypes.c_uint64), ("InUnknownProtos", ctypes.c_uint64),
-        ("InUcastOctets", ctypes.c_uint64), ("InMulticastOctets", ctypes.c_uint64),
-        ("InBroadcastOctets", ctypes.c_uint64), ("OutOctets", ctypes.c_uint64), ("OutUcastPkts", ctypes.c_uint64),
-        ("OutNUcastPkts", ctypes.c_uint64), ("OutDiscards", ctypes.c_uint64), ("OutErrors", ctypes.c_uint64),
-        ("OutUcastOctets", ctypes.c_uint64), ("OutMulticastOctets", ctypes.c_uint64),
-        ("OutBroadcastOctets", ctypes.c_uint64), ("OutQLen", ctypes.c_uint64),
+        ("InterfaceLuid", ctypes.c_uint64),
+        ("InterfaceIndex", ctypes.c_ulong),
+        ("InterfaceGuid", GUID),
+        ("Alias", ctypes.c_wchar * 257),
+        ("Description", ctypes.c_wchar * 257),
+        ("PhysicalAddressLength", ctypes.c_ulong),
+        ("PhysicalAddress", ctypes.c_ubyte * 32),
+        ("PermanentPhysicalAddress", ctypes.c_ubyte * 32),
+        ("Mtu", ctypes.c_ulong),
+        ("Type", ctypes.c_ulong),
+        ("TunnelType", ctypes.c_int),
+        ("MediaType", ctypes.c_int),
+        ("PhysicalMediumType", ctypes.c_int),
+        ("AccessType", ctypes.c_int),
+        ("DirectionType", ctypes.c_int),
+        ("InterfaceAndOperStatusFlags", ctypes.c_ubyte),
+        ("OperStatus", ctypes.c_int),
+        ("AdminStatus", ctypes.c_int),
+        ("MediaConnectState", ctypes.c_int),
+        ("NetworkGuid", GUID),
+        ("ConnectionType", ctypes.c_int),
+        ("TransmitLinkSpeed", ctypes.c_uint64),
+        ("ReceiveLinkSpeed", ctypes.c_uint64),
+        ("InOctets", ctypes.c_uint64),
+        ("InUcastPkts", ctypes.c_uint64),
+        ("InNUcastPkts", ctypes.c_uint64),
+        ("InDiscards", ctypes.c_uint64),
+        ("InErrors", ctypes.c_uint64),
+        ("InUnknownProtos", ctypes.c_uint64),
+        ("InUcastOctets", ctypes.c_uint64),
+        ("InMulticastOctets", ctypes.c_uint64),
+        ("InBroadcastOctets", ctypes.c_uint64),
+        ("OutOctets", ctypes.c_uint64),
+        ("OutUcastPkts", ctypes.c_uint64),
+        ("OutNUcastPkts", ctypes.c_uint64),
+        ("OutDiscards", ctypes.c_uint64),
+        ("OutErrors", ctypes.c_uint64),
+        ("OutUcastOctets", ctypes.c_uint64),
+        ("OutMulticastOctets", ctypes.c_uint64),
+        ("OutBroadcastOctets", ctypes.c_uint64),
+        ("OutQLen", ctypes.c_uint64),
     ]
 
 
 class MIB_IPNET_ROW2(ctypes.Structure):
-    _fields_ = [("Address", SOCKADDR_INET), ("InterfaceIndex", ctypes.c_ulong), ("InterfaceLuid", ctypes.c_uint64),
-                ("PhysicalAddress", ctypes.c_ubyte * 32), ("PhysicalAddressLength", ctypes.c_ulong),
-                ("State", ctypes.c_int), ("Flags", ctypes.c_ubyte), ("ReachabilityTime", ctypes.c_ulong)]
+    _fields_ = [
+        ("Address", SOCKADDR_INET),
+        ("InterfaceIndex", ctypes.c_ulong),
+        ("InterfaceLuid", ctypes.c_uint64),
+        ("PhysicalAddress", ctypes.c_ubyte * 32),
+        ("PhysicalAddressLength", ctypes.c_ulong),
+        ("State", ctypes.c_int),
+        ("Flags", ctypes.c_ubyte),
+        ("ReachabilityTime", ctypes.c_ulong),
+    ]
 
 
 assert ctypes.sizeof(MIB_IF_ROW2) == 1352 and ctypes.sizeof(MIB_IPNET_ROW2) == 88
@@ -88,28 +120,43 @@ def _ipv4(sockaddr):
 
 def interfaces():
     """Network interfaces, without the per-driver filter layers Windows also lists as interfaces."""
-    return [Interface(index=row.InterfaceIndex, alias=row.Alias, description=row.Description,
-                      connected=row.OperStatus == IF_OPER_STATUS_UP
-                      and row.MediaConnectState == MEDIA_CONNECT_STATE_CONNECTED,
-                      tx_speed=row.TransmitLinkSpeed, rx_speed=row.ReceiveLinkSpeed,
-                      in_octets=row.InOctets, out_octets=row.OutOctets, mtu=row.Mtu)
-            for row in _rows(_iphlpapi.GetIfTable2, MIB_IF_ROW2)
-            if not row.InterfaceAndOperStatusFlags & 0x02]  # FilterInterface
+    return [
+        Interface(
+            index=row.InterfaceIndex,
+            alias=row.Alias,
+            description=row.Description,
+            connected=row.OperStatus == IF_OPER_STATUS_UP and row.MediaConnectState == MEDIA_CONNECT_STATE_CONNECTED,
+            tx_speed=row.TransmitLinkSpeed,
+            rx_speed=row.ReceiveLinkSpeed,
+            in_octets=row.InOctets,
+            out_octets=row.OutOctets,
+            mtu=row.Mtu,
+        )
+        for row in _rows(_iphlpapi.GetIfTable2, MIB_IF_ROW2)
+        if not row.InterfaceAndOperStatusFlags & 0x02
+    ]  # FilterInterface
 
 
 def ipv4_addresses(index=None):
     """This PC's IPv4 addresses as [(ip, prefix_length, interface_index)], optionally for one interface."""
-    return [(_ipv4(row.Address), row.OnLinkPrefixLength, row.InterfaceIndex)
-            for row in _rows(_iphlpapi.GetUnicastIpAddressTable, MIB_UNICASTIPADDRESS_ROW, AF_INET)
-            if index is None or row.InterfaceIndex == index]
+    return [
+        (_ipv4(row.Address), row.OnLinkPrefixLength, row.InterfaceIndex)
+        for row in _rows(_iphlpapi.GetUnicastIpAddressTable, MIB_UNICASTIPADDRESS_ROW, AF_INET)
+        if index is None or row.InterfaceIndex == index
+    ]
 
 
 def neighbors(index):
     """IPv4 neighbors this PC has resolved on one interface (unicast only), as a list of IPs."""
     found = []
     for row in _rows(_iphlpapi.GetIpNetTable2, MIB_IPNET_ROW2, AF_INET):
-        mac = bytes(row.PhysicalAddress[:row.PhysicalAddressLength])
-        if (row.InterfaceIndex == index and row.State in NEIGHBOR_RESOLVED and len(mac) == 6
-                and any(mac) and not mac[0] & 1):
+        mac = bytes(row.PhysicalAddress[: row.PhysicalAddressLength])
+        if (
+            row.InterfaceIndex == index
+            and row.State in NEIGHBOR_RESOLVED
+            and len(mac) == 6
+            and any(mac)
+            and not mac[0] & 1
+        ):
             found.append(_ipv4(row.Address))
     return found

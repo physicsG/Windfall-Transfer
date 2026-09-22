@@ -16,12 +16,31 @@ WIN, MAC = bytes([10, 77, 0, 1]), bytes([10, 77, 0, 2])
 
 
 def dhcp(options):
-    bootp = struct.pack("!BBBB4sH2s4s4s4s4s16s64s128s", 1, 1, 6, 0, b"\x01\x02\x03\x04", 0, b"\x00\x00",
-                        bytes(4), bytes(4), bytes(4), bytes(4), MAC_HW + bytes(10), b"", b"")
+    bootp = struct.pack(
+        "!BBBB4sH2s4s4s4s4s16s64s128s",
+        1,
+        1,
+        6,
+        0,
+        b"\x01\x02\x03\x04",
+        0,
+        b"\x00\x00",
+        bytes(4),
+        bytes(4),
+        bytes(4),
+        bytes(4),
+        MAC_HW + bytes(10),
+        b"",
+        b"",
+    )
     bootp += b"\x63\x82\x53\x63" + options + b"\xff"
     everyone = b"\xff" * 4
-    return pk.ethernet(pk.BROADCAST_MAC, MAC_HW, pk.ETH_IPV4,
-                       pk.ipv4(bytes(4), everyone, pk.PROTO_UDP, pk.udp4(bytes(4), everyone, 68, 67, bootp)))
+    return pk.ethernet(
+        pk.BROADCAST_MAC,
+        MAC_HW,
+        pk.ETH_IPV4,
+        pk.ipv4(bytes(4), everyone, pk.PROTO_UDP, pk.udp4(bytes(4), everyone, 68, 67, bootp)),
+    )
 
 
 class Scenario:
@@ -129,16 +148,30 @@ class ServiceTests(unittest.TestCase):
             return FakeDevice(scenario, scenario.connection)
 
         FakeFunction.scenario = scenario
-        with mock.patch.object(service_module, "open_device", fake_open), \
-                mock.patch.object(service_module, "NcmFunction", FakeFunction), \
-                mock.patch.object(service_module, "find_functions", lambda device: [(0, 1)]), \
-                self.assertLogs("bridge", "INFO") as logs:
+        with (
+            mock.patch.object(service_module, "open_device", fake_open),
+            mock.patch.object(service_module, "NcmFunction", FakeFunction),
+            mock.patch.object(service_module, "find_functions", lambda device: [(0, 1)]),
+            self.assertLogs("bridge", "INFO") as logs,
+        ):
             started = time.monotonic()
             service._serve(FakeAdapter(scenario))
         self.assertLess(time.monotonic() - started, 10)
-        self.assertEqual(scenario.events, [
-            "1: plugged in", "1: start read=0 write=5000", "1: stop", "1: session closed", "1: device closed",
-            "2: plugged in", "2: start read=0 write=5000", "2: stop", "2: session closed", "2: device closed"])
+        self.assertEqual(
+            scenario.events,
+            [
+                "1: plugged in",
+                "1: start read=0 write=5000",
+                "1: stop",
+                "1: session closed",
+                "1: device closed",
+                "2: plugged in",
+                "2: start read=0 write=5000",
+                "2: stop",
+                "2: session closed",
+                "2: device closed",
+            ],
+        )
         text = "\n".join(logs.output)
         self.assertEqual(text.count("the Mac took address 10.77.0.2"), 2)
         self.assertEqual(text.count("the Mac disconnected"), 2)
