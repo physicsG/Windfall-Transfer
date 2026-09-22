@@ -27,6 +27,12 @@ virtual network adapter ([Wintun](https://www.wintun.net)).
    them in Windows Credential Manager, so Explorer opens the Mac without asking. Double-click a folder to open
    it in Explorer and copy files either way.
 
+**Thunderbolt / USB4 cables** (in this PC's Thunderbolt port) don't need the bridge: Windows and macOS build
+that network link themselves ("USB4(TM) P2P Network Adapter" on Windows, "Thunderbolt Bridge" on the Mac), at
+10–20+ Gbps. Connect App notices the link, finds the Mac on it (Bonjour, else Windows' neighbor table, else an
+address you enter under Connection settings), and uses it for the folder list, saved password and Explorer.
+When both links are up, it prefers Thunderbolt/USB4. Saved passwords are per address, so sign in once per link.
+
 The **Mac setup** tab lists the one-time steps on the Mac and ticks them off as they work; **Connection
 settings** changes the addresses. Prefer a console? `Start bridge.cmd` runs the same bridge without a window
 (Ctrl+C stops it); then open **`\\10.77.0.2`** in Explorer yourself. Only one of the two can run at a time.
@@ -63,6 +69,8 @@ driver for this device*, then replug the cable. The Wintun adapter only exists w
 | `probe.py` | Diagnostic probe |
 | `connect_app/gui.py` | The window (Tkinter) |
 | `connect_app/service.py` | The bridge (USB network function ⇄ Wintun adapter, DHCP/ARP/NDP) and the service that reconnects it |
+| `connect_app/usb4.py` | Thunderbolt/USB4 mode: watches for Windows' USB4 network adapter and finds the Mac on it |
+| `connect_app/netinfo.py`, `mdns.py` | Interface/address/neighbor tables (IP Helper); a one-shot Bonjour query |
 | `connect_app/smb.py` | Listing the Mac's shared folders, signing in, Credential Manager |
 | `connect_app/settings.py`, `winapp.py` | Settings file; elevation, single instance, DPI |
 | `connect_app/winusb.py` | SetupAPI + WinUSB bindings (ctypes) |

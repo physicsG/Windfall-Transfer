@@ -1,4 +1,4 @@
-"""Connect App window: runs the bridge and shows the connection, the Mac's shared folders and the Mac-side setup."""
+"""Connect App window: runs the bridge, watches for a Thunderbolt/USB4 link, and shows the Mac's shared folders."""
 
 import ipaddress
 import logging
@@ -14,6 +14,7 @@ from tkinter import messagebox, ttk
 from . import settings as app_settings
 from . import smb, winapp
 from .service import ADAPTER_NAME, LOG_FILE, BridgeService
+from .usb4 import Usb4Monitor, speed_text
 
 log = logging.getLogger("bridge")
 
@@ -23,10 +24,11 @@ MARK_COLORS = {DONE: GREEN, TODO: GREY, FAIL: RED, BUSY: AMBER}
 
 MAC_STEPS = [
     ("cable", "Connect the Mac",
-     "Plug the Mac into this PC with the USB-C cable, and keep it awake and unlocked. "
-     "Nothing needs to be installed on the Mac."),
+     "Plug the Mac into this PC with a USB-C cable, and keep it awake and unlocked. A Thunderbolt or USB4 cable in "
+     "this PC's Thunderbolt port gives the fastest link; any other USB-C cable works through the bridge."),
     ("address", "The Mac gets its address",
-     "Happens by itself: the bridge hands the Mac {mac_ip}."),
+     "Happens by itself: through the bridge the Mac gets {mac_ip}; on Thunderbolt/USB4 it picks its own address "
+     "and Connect App finds it."),
     ("sharing", "Turn on File Sharing",
      "On the Mac: System Settings > General > Sharing > File Sharing."),
     ("account", "Allow your account for Windows",
@@ -37,6 +39,8 @@ MAC_STEPS = [
      "In the same (i) panel, add folders under Shared Folders with +. Your home folder is always available "
      "when you sign in with your own account."),
 ]
+USB4_TIP = ("Thunderbolt/USB4 cable, optional: transfers to the Mac may get faster with the MTU of the Mac's "
+            "Thunderbolt Bridge set to 9000 (System Settings > Network > Thunderbolt Bridge > Details > Hardware).")
 
 
 class _QueueHandler(logging.Handler):
@@ -55,17 +59,18 @@ class App:
     POLL_MS = 400
     PORT_CHECK_SECONDS = 5.0
 
-    def __init__(self, root, start_bridge=None):
+    def __init__(self, root, start_bridge=None, usb4=None):
         self.root = root
         self.settings = app_settings.load()
         self.service = None
+        self.usb4 = usb4 or Usb4Monitor(self.settings["usb4_mac_ip"])
         self.stopping = False
         self.closing = False
         self.destroyed = False
         self._after_stop = []
         self.log_lines = queue.Queue()
         self.results = queue.Queue()
-        self.connected = False
+        self.link = None  # ("usb4" or "usb", the Mac's IP) for the connection in use
         self.port_open = None  # the Mac's File Sharing answers (None = not checked yet)
         self.port_checking = False
         self.last_port_check = 0.0
@@ -73,21 +78,40 @@ class App:
         self.shares_busy = False
         self.auto_listed = False
         self.sign_in_error = None
-        self.signed_in_user = None
-        self.saved_user = smb.saved_user(self.mac_ip)
+        self.signed_in = None  # (Mac IP, user) of the session this app opened
+        self.saved_user = smb.saved_user(self.settings["mac_ip"])
         self._handlers = self._setup_logging()
         self._build()
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self._report_exception
         root.after(self.POLL_MS, self.poll)
+        if usb4 is None:
+            self.usb4.start()
         if self.settings["start_on_launch"] if start_bridge is None else start_bridge:
             self.start_bridge()
 
     @property
-    def mac_ip(self):
+    def connected(self):
+        return self.link is not None
+
+    @property
+    def target_ip(self):
+        """Where the Mac is reached: over the connection in use, else at the bridge's address for it."""
+        if self.link:
+            return self.link[1]
         if self.service and self.service.running:
             return str(self.service.mac_ip)  # new addresses only apply after a restart
         return self.settings["mac_ip"]
+
+    def _known_user(self):
+        """The Mac account this app can use right now: a session opened here, or a saved password."""
+        if self.signed_in and self.signed_in[0] == self.target_ip:
+            return self.signed_in[1]
+        return self.saved_user
+
+    def _mac_addresses(self):
+        """Every address the Mac is known by (current one first), so a saved password works with either cable."""
+        return list(dict.fromkeys(ip for ip in (self.target_ip, self.settings["mac_ip"], self.usb4.mac_ip) if ip))
 
     # ---- layout ----
 
@@ -106,8 +130,8 @@ class App:
         root = self.root
         root.title("Connect App - Mac over USB-C")
         self.scale = scale = root.winfo_fpixels("1i") / 96.0
-        root.geometry(f"{int(820 * scale)}x{int(620 * scale)}")
-        root.minsize(int(680 * scale), int(520 * scale))
+        root.geometry(f"{int(820 * scale)}x{int(640 * scale)}")
+        root.minsize(int(680 * scale), int(540 * scale))
         style = ttk.Style(root)
         if "vista" in style.theme_names():
             style.theme_use("vista")
@@ -189,14 +213,14 @@ class App:
         self.open_folder_button.pack(side="left")
         self.refresh_button = ttk.Button(row, text="Refresh", command=self.list_folders)
         self.refresh_button.pack(side="left", padx=(8, 0))
-        self.folders_var = tk.StringVar(value="Start the bridge and connect the Mac to see its shared folders.")
+        self.folders_var = tk.StringVar(value="Connect the Mac to see its shared folders.")
         ttk.Label(folders, textvariable=self.folders_var, style="Hint.TLabel",
                   wraplength=int(700 * self.scale)).pack(anchor="w", pady=(8, 0))
         return frame
 
     def _build_steps(self, parent):
         frame = ttk.Frame(parent, padding=12)
-        ttk.Label(frame, text="One-time setup on the Mac. The marks update by themselves while the bridge runs.",
+        ttk.Label(frame, text="One-time setup on the Mac. The marks update by themselves while the Mac is connected.",
                   style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
         self.step_marks, self.step_notes, self.step_texts = {}, {}, {}
         for number, (key, title, text) in enumerate(MAC_STEPS, 1):
@@ -207,16 +231,19 @@ class App:
             body = ttk.Frame(row)
             body.pack(side="left", fill="x", expand=True, padx=(6, 0))
             ttk.Label(body, text=f"{number}. {title}", style="Step.TLabel").pack(anchor="w")
-            description = ttk.Label(body, text=text.format(mac_ip=self.mac_ip), wraplength=int(700 * self.scale))
+            description = ttk.Label(body, text=text.format(mac_ip=self.settings["mac_ip"]),
+                                    wraplength=int(700 * self.scale))
             description.pack(anchor="w")
             note = ttk.Label(body, style="Hint.TLabel")
             note.pack(anchor="w")
             self.step_marks[key], self.step_notes[key], self.step_texts[key] = mark, note, description
+        ttk.Label(frame, text=USB4_TIP, style="Hint.TLabel",
+                  wraplength=int(730 * self.scale)).pack(anchor="w", pady=(12, 0))
         return frame
 
     def _build_settings(self, parent):
         frame = ttk.Frame(parent, padding=12)
-        form = ttk.LabelFrame(frame, text="Addresses on the cable", padding=10)
+        form = ttk.LabelFrame(frame, text="USB cable (through the bridge)", padding=10)
         form.pack(fill="x")
         self.windows_ip_var = tk.StringVar(value=self.settings["windows_ip"])
         self.mac_ip_var = tk.StringVar(value=self.settings["mac_ip"])
@@ -230,6 +257,18 @@ class App:
             ttk.Label(form, text=hint, style="Hint.TLabel").grid(row=row, column=2, sticky="w", pady=3)
         ttk.Label(form, text="Use addresses that none of your other networks use.",
                   style="Hint.TLabel").grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+        usb4 = ttk.LabelFrame(frame, text="Thunderbolt / USB4 cable (built into Windows and macOS)", padding=10)
+        usb4.pack(fill="x", pady=(12, 0))
+        ttk.Label(usb4, text="Connect App finds the Mac on this link by itself.").grid(
+            row=0, column=0, columnspan=3, sticky="w")
+        ttk.Label(usb4, text="Mac's address").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.usb4_ip_var = tk.StringVar(value=self.settings["usb4_mac_ip"])
+        ttk.Entry(usb4, textvariable=self.usb4_ip_var, width=18).grid(row=1, column=1, sticky="w", padx=8,
+                                                                      pady=(6, 0))
+        ttk.Label(usb4, text="only if it isn't found; the Mac shows it under Network > Thunderbolt Bridge",
+                  style="Hint.TLabel").grid(row=1, column=2, sticky="w", pady=(6, 0))
+
         self.autostart_var = tk.BooleanVar(value=self.settings["start_on_launch"])
         ttk.Checkbutton(frame, text="Start the bridge when Connect App opens",
                         variable=self.autostart_var).pack(anchor="w", pady=(12, 0))
@@ -241,8 +280,10 @@ class App:
 
         about = ttk.LabelFrame(frame, text="About this connection", padding=10)
         about.pack(fill="x", pady=(16, 0))
-        for text in (f"Network adapter: '{ADAPTER_NAME}', which exists while the bridge runs.",
-                     "Speed depends on the cable: a USB 2.0 cable reaches about 35-40 MB/s.",
+        self.usb4_var = tk.StringVar()
+        ttk.Label(about, textvariable=self.usb4_var, wraplength=int(700 * self.scale)).pack(anchor="w", pady=1)
+        for text in (f"USB bridge adapter: '{ADAPTER_NAME}', which exists while the bridge runs. A USB 2.0 cable "
+                     "reaches about 35-40 MB/s.",
                      f"Log file: {LOG_FILE}",
                      f"Settings file: {app_settings.PATH}"):
             ttk.Label(about, text=text, wraplength=int(700 * self.scale)).pack(anchor="w", pady=1)
@@ -291,12 +332,21 @@ class App:
         self.log_text.configure(state="disabled")
         self.log_text.see("end")
 
+    def _current_link(self):
+        """The best connection to the Mac right now: Thunderbolt/USB4 first, then the USB bridge."""
+        if self.usb4.state == Usb4Monitor.FOUND and self.usb4.mac_ip:
+            return ("usb4", self.usb4.mac_ip)
+        service = self.service
+        if service and service.state == BridgeService.CONNECTED and service.mac_configured:
+            return ("usb", str(service.mac_ip))
+        return None
+
     def _refresh(self):
         service = self.service
         running = bool(service and service.running)
-        connected = bool(service and service.state == BridgeService.CONNECTED and service.mac_configured)
-        if connected != self.connected:
-            self.connected = connected
+        link = self._current_link()
+        if link != self.link:
+            self.link = link
             self._connection_changed()
         text, detail, color = self._status(service)
         self.status_var.set(text)
@@ -304,17 +354,32 @@ class App:
         self.dot.itemconfigure(self.dot_item, fill=color)
         self.start_button.configure(text="Stop bridge" if running else "Start bridge",
                                     state="disabled" if self.stopping else "normal")
-        ready = "normal" if connected else "disabled"
+        ready = "normal" if self.connected else "disabled"
         self.open_button.configure(state=ready)
         self.refresh_button.configure(state=ready)
         self.sign_in_button.configure(state=ready)
         self.open_folder_button.configure(state=ready if self.shares else "disabled")
         self.forget_button.configure(state="normal" if self.saved_user else "disabled")
+        self.usb4_var.set(self._usb4_summary())
         self._refresh_steps(service)
 
     def _status(self, service):
+        usb4 = self.usb4
         if self.stopping:
             return "Stopping the bridge...", "", AMBER
+        if self.link and self.link[0] == "usb4":
+            to_mac, to_pc = usb4.rates
+            name = f"{usb4.mac_name}    " if usb4.mac_name else ""
+            return (f"Connected over Thunderbolt/USB4 to the Mac at {usb4.mac_ip}",
+                    f"{name}{speed_text(usb4.link_speed)} link    To the Mac {to_mac:.1f} MB/s    "
+                    f"To this PC {to_pc:.1f} MB/s", GREEN)
+        if self.link:
+            to_mac, to_pc = service.rates
+            return (f"Connected over USB to the Mac at {service.mac_ip}",
+                    f"To the Mac {to_mac:.1f} MB/s    To this PC {to_pc:.1f} MB/s", GREEN)
+        if usb4.state == Usb4Monitor.SEARCHING:
+            return ("Thunderbolt/USB4 link is up; looking for the Mac...",
+                    "If it isn't found, enter the Mac's address under Connection settings.", AMBER)
         if service is None or service.state == BridgeService.STOPPED:
             return "Bridge stopped", "Click Start bridge to connect to the Mac.", GREY
         if service.state == BridgeService.FAILED:
@@ -325,26 +390,48 @@ class App:
             if service.waiting_reason and "WinUSB" in service.waiting_reason:
                 return "The Mac isn't answering", "Unplug the USB-C cable and plug it back in.", AMBER
             return "Waiting for the Mac", "Plug in the USB-C cable, and keep the Mac awake and unlocked.", AMBER
-        if not service.mac_configured:
-            return "Mac connected", f"Handing it the address {service.mac_ip}...", AMBER
-        to_mac, to_pc = service.rates
-        return (f"Connected to the Mac at {service.mac_ip}",
-                f"To the Mac {to_mac:.1f} MB/s    To this PC {to_pc:.1f} MB/s", GREEN)
+        return "Mac connected", f"Handing it the address {service.mac_ip}...", AMBER
+
+    def _usb4_summary(self):
+        usb4 = self.usb4
+        if usb4.state == Usb4Monitor.ABSENT:
+            return ("Thunderbolt/USB4 link: none. It appears when a Thunderbolt or USB4 cable connects the Mac to "
+                    "this PC's Thunderbolt port.")
+        if usb4.state == Usb4Monitor.DOWN:
+            return "Thunderbolt/USB4 link: the adapter is there but not connected."
+        parts = [f"Thunderbolt/USB4 link: {usb4.adapter.description if usb4.adapter else 'up'}",
+                 speed_text(usb4.link_speed)]
+        if usb4.local_ip:
+            parts.append(f"this PC {usb4.local_ip}")
+        parts.append(f"Mac {usb4.mac_ip}" if usb4.mac_ip else "looking for the Mac")
+        return ", ".join(parts) + "."
 
     def _set_step(self, key, mark, note=""):
         self.step_marks[key].configure(text=mark, foreground=MARK_COLORS[mark])
         self.step_notes[key].configure(text=note)
 
     def _refresh_steps(self, service):
+        usb4 = self.usb4
         state = service.state if service else BridgeService.STOPPED
-        if state == BridgeService.CONNECTED:
-            self._set_step("cable", DONE, "The Mac is connected.")
+        over_usb4 = bool(self.link and self.link[0] == "usb4")
+        if over_usb4:
+            self._set_step("cable", DONE, f"Connected with a Thunderbolt/USB4 cable ({speed_text(usb4.link_speed)} "
+                                          "link).")
+        elif state == BridgeService.CONNECTED:
+            self._set_step("cable", DONE, "Connected over USB, through the bridge.")
+        elif usb4.state == Usb4Monitor.SEARCHING:
+            self._set_step("cable", DONE, "Thunderbolt/USB4 cable connected.")
         elif state == BridgeService.WAITING:
             self._set_step("cable", BUSY, "Waiting for the Mac...")
         else:
-            self._set_step("cable", TODO, "Start the bridge first." if state != BridgeService.FAILED else "")
-        if self.connected:
+            self._set_step("cable", TODO, "" if state == BridgeService.FAILED else
+                           "Start the bridge, or connect a Thunderbolt/USB4 cable.")
+        if over_usb4:
+            self._set_step("address", DONE, f"The Mac is at {usb4.mac_ip} on Thunderbolt/USB4.")
+        elif self.connected:
             self._set_step("address", DONE, f"The Mac has {service.mac_ip}.")
+        elif usb4.state == Usb4Monitor.SEARCHING:
+            self._set_step("address", BUSY, "Looking for the Mac on Thunderbolt/USB4...")
         elif state == BridgeService.CONNECTED:
             self._set_step("address", BUSY, "Handing out the address...")
         else:
@@ -358,7 +445,7 @@ class App:
         else:
             self._set_step("sharing", BUSY, "Checking...")
         if self.shares is not None:
-            who = self.signed_in_user or self.saved_user
+            who = self._known_user()
             self._set_step("account", DONE, f"Signed in as {who}." if who else "Signed in.")
         elif self.sign_in_error in smb.AUTH_ERRORS:
             self._set_step("account", FAIL, "Signing in failed; see the Shared folders tab.")
@@ -374,11 +461,16 @@ class App:
         self.last_port_check = 0.0
         self.auto_listed = False
         self.shares = None
+        self.sign_in_error = None
         self._show_shares([])
-        if self.connected:
-            self.folders_var.set("Checking the Mac's File Sharing...")
-        else:
+        if not self.connected:
             self.folders_var.set("Connect the Mac to see its shared folders.")
+            return
+        self.saved_user = smb.saved_user(self.target_ip)  # passwords are saved per address
+        if self.saved_user:
+            self.user_var.set(self.saved_user)
+            self.account_var.set(f"Password saved for {self.saved_user}.")
+        self.folders_var.set("Checking the Mac's File Sharing...")
 
     def _maybe_check_port(self):
         if not self.connected or self.port_checking:
@@ -387,18 +479,17 @@ class App:
             return
         self.port_checking = True
         self.last_port_check = time.monotonic()
-        ip = self.mac_ip
-        self._in_background(lambda: smb.port_open(ip), self._port_checked)
+        ip = self.target_ip
+        self._in_background(lambda: smb.port_open(ip), lambda is_open: self._port_checked(ip, is_open))
 
-    def _port_checked(self, is_open):
+    def _port_checked(self, ip, is_open):
         self.port_checking = False
-        if not self.connected:
+        if not self.connected or ip != self.target_ip:
             return
         is_open = is_open is True
         changed = is_open != self.port_open
         self.port_open = is_open
-        known_user = self.saved_user or self.signed_in_user
-        if is_open and not self.auto_listed and known_user:
+        if is_open and not self.auto_listed and self._known_user():
             self.auto_listed = True
             self.list_folders()
         elif changed and is_open and self.shares is None:
@@ -462,7 +553,7 @@ class App:
         if not user:
             self.account_var.set("Enter your Mac account name (on the Mac, Terminal: whoami).")
             return
-        if not password and user not in (self.saved_user, self.signed_in_user):
+        if not password and user != self._known_user():
             self.account_var.set("Enter the password of your Mac account.")
             return
         self.list_folders(user, password or None, self.save_var.get())
@@ -471,22 +562,25 @@ class App:
         if self.shares_busy:
             return
         if not self.connected:
-            self.folders_var.set("Connect the Mac first: start the bridge and plug in the cable.")
+            self.folders_var.set("Connect the Mac first: plug in the cable (and start the bridge for a USB cable).")
             return
         self.shares_busy = True
         self.folders_var.set("Asking the Mac for its shared folders...")
-        ip = self.mac_ip
+        ip = self.target_ip
+        save_for = self._mac_addresses() if save else []
 
         def work():
             if password is not None:
                 smb.sign_in(ip, user, password)
-                if save:
-                    smb.save_credentials(ip, user, password)
+                for address in save_for:
+                    smb.save_credentials(address, user, password)
             return smb.list_shares(ip)
-        self._in_background(work, lambda result: self._listed(result, user, password is not None, save))
+        self._in_background(work, lambda result: self._listed(result, ip, user, password is not None, save))
 
-    def _listed(self, result, user, used_password, saved):
+    def _listed(self, result, ip, user, used_password, saved):
         self.shares_busy = False
+        if ip != self.target_ip:
+            return  # the connection changed while the Mac was answering
         if isinstance(result, Exception):
             code = getattr(result, "errno", None)
             message = getattr(result, "strerror", None) or str(result)
@@ -502,13 +596,13 @@ class App:
             return
         self.sign_in_error = None
         if used_password:
-            self.signed_in_user = user
+            self.signed_in = (ip, user)
             self.password_var.set("")
             self.settings["mac_user"] = user
             app_settings.save(self.settings)
             if saved:
                 self.saved_user = user
-        who = self.signed_in_user or self.saved_user
+        who = self._known_user()
         remembered = bool(who and who == self.saved_user)
         self.account_var.set((f"Signed in as {who}." if who else "Signed in.") +
                              (" The password is saved in Windows Credential Manager." if remembered else ""))
@@ -533,23 +627,25 @@ class App:
             self.folders_var.set("Select a folder first.")
 
     def open_share(self, name):
-        path = f"\\\\{self.mac_ip}" + (f"\\{name}" if name else "")
+        path = f"\\\\{self.target_ip}" + (f"\\{name}" if name else "")
         try:
             os.startfile(path)
         except OSError as e:
             messagebox.showerror("Connect App", f"Couldn't open {path}: {e.strerror or e}")
 
     def forget(self):
-        ip = self.mac_ip
+        addresses = self._mac_addresses()
         try:
-            smb.forget_credentials(ip)
+            for address in addresses:
+                smb.forget_credentials(address)
         except OSError as e:
             self.account_var.set(f"Couldn't remove the saved password: {e.strerror or e}")
             return
-        smb.sign_out(ip)
-        self.saved_user = self.signed_in_user = None
+        for address in addresses:
+            smb.sign_out(address)
+        self.saved_user = self.signed_in = None
         self.account_var.set("Removed the saved password. Explorer will ask for it next time.")
-        log.info("removed the saved password for \\\\%s", ip)
+        log.info("removed the saved password for %s", ", ".join(addresses))
 
     def save_settings(self):
         try:
@@ -557,19 +653,22 @@ class App:
             mac_ip = str(ipaddress.IPv4Address(self.mac_ip_var.get().strip()))
             prefix = int(self.prefix_var.get().strip())
             BridgeService(windows_ip, mac_ip, prefix)  # validates the combination
+            usb4_ip = self.usb4_ip_var.get().strip()
+            if usb4_ip:
+                usb4_ip = str(ipaddress.IPv4Address(usb4_ip))
         except ValueError as e:
             self.settings_var.set(f"Not saved: {e}")
             return
         new = {"windows_ip": windows_ip, "mac_ip": mac_ip, "prefix": prefix}
         changed = any(self.settings[key] != value for key, value in new.items())
-        self.settings.update(new, start_on_launch=self.autostart_var.get())
+        if usb4_ip != self.settings["usb4_mac_ip"]:
+            self.usb4.set_manual_address(usb4_ip)
+        self.settings.update(new, usb4_mac_ip=usb4_ip, start_on_launch=self.autostart_var.get())
         app_settings.save(self.settings)
         running = bool(self.service and self.service.running)
         self.settings_var.set("Saved." + (" Stop and start the bridge to use the new addresses."
                                           if changed and running else ""))
-        if not running:
-            self.saved_user = smb.saved_user(self.mac_ip)
-            self.step_texts["address"].configure(text=MAC_STEPS[1][2].format(mac_ip=self.mac_ip))
+        self.step_texts["address"].configure(text=MAC_STEPS[1][2].format(mac_ip=mac_ip))
 
     # ---- closing ----
 
@@ -581,6 +680,7 @@ class App:
 
     def _destroy(self):
         self.destroyed = True
+        self.usb4.stop(timeout=1)
         root_logger = logging.getLogger()
         for handler in self._handlers:
             root_logger.removeHandler(handler)

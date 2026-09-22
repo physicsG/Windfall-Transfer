@@ -9,6 +9,7 @@ DEFAULTS = {
     "prefix": 24,
     "mac_user": "",
     "start_on_launch": True,
+    "usb4_mac_ip": "",  # the Mac's address on Thunderbolt/USB4, only if it isn't found automatically
 }
 PATH = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "ConnectApp", "settings.json")
 
