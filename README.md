@@ -36,9 +36,13 @@ private copy of that Python embedded, unpacked to `C:\Program Files\Windfall Tra
 
 ## Develop
 
+`python tools\setup_dev.py` creates `.venv` with the dev tools pinned in `pyproject.toml`. Then:
+
+- Lint and format: `.venv\Scripts\ruff check` and `.venv\Scripts\ruff format`
+- Type-check: `.venv\Scripts\mypy`
+- Tests: `python -m unittest discover -s tests` (no Mac or admin rights needed)
 - Run from source: `python "Windfall Transfer.pyw"`, or `pythonw "Windfall Transfer.pyw" --preview` for the window
   without the bridge.
-- Tests: `python -m unittest discover -s tests` (no Mac or admin rights needed).
 - `python probe.py` brings up the Mac's USB network functions for 40 seconds and reports what the Mac sends. Close
   the app first: only one program can use the Mac's USB device at a time.
 - `python bridge.py` (or `Start bridge.cmd`) runs the bridge in a console.

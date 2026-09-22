@@ -4,3 +4,6 @@ logs/
 dist/
 build/
 .claude/settings.local.json
+.venv/
+.mypy_cache/
+.ruff_cache/
