@@ -17,9 +17,11 @@ from .winusb import WinUsbDevice, WinUsbError, open_device
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINTUN_DLL = os.path.join(ROOT, "vendor", "wintun", "wintun.dll")
-DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Windfall Transfer")
+LOCAL_APPDATA = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+DATA_DIR = os.path.join(LOCAL_APPDATA, "Windfall-Transfer")
 LOG_FILE = os.path.join(DATA_DIR, "logs", "bridge.log")  # outside the app folder, which may be read-only
-LEGACY_DATA_DIR = os.path.join(os.path.dirname(DATA_DIR), "ConnectApp")  # logs under the earlier name, Connect App
+# Logs under earlier names.
+LEGACY_DATA_DIRS = (os.path.join(LOCAL_APPDATA, "Windfall Transfer"), os.path.join(LOCAL_APPDATA, "ConnectApp"))
 ADAPTER_NAME = "Mac USB Link"
 ADAPTER_GUID = "{6F6D2C1A-3B7E-4C55-9E1D-2A5C0FFEE0A1}"  # fixed, so Windows recognises the same network each time
 

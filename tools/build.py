@@ -1,4 +1,4 @@
-"""Build dist/Windfall Transfer.exe, a single self-contained exe, from build/Windfall Transfer/ (launcher, runtime/,
+"""Build dist/Windfall-Transfer.exe, a single self-contained exe, from build/Windfall-Transfer/ (launcher, runtime/,
 app/). The runtime is a trimmed copy of the 64-bit python.org Python running this script; the launcher is compiled
 with the C# compiler that ships with Windows.
 
@@ -22,12 +22,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / "tools"
-STAGE = ROOT / "build" / "Windfall Transfer"
-SINGLE = ROOT / "dist" / "Windfall Transfer.exe"
+STAGE = ROOT / "build" / "Windfall-Transfer"
+SINGLE = ROOT / "dist" / "Windfall-Transfer.exe"
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)  # zip entry dates, so unchanged builds get the same payload ID
 RUNTIME = STAGE / "runtime"
 APP = STAGE / "app"
-ENTRY = ROOT / "Windfall Transfer.pyw"
+ENTRY = ROOT / "Windfall-Transfer.pyw"
 BASE = Path(sys.base_prefix)
 STDLIB = BASE / "Lib"
 DLLS = BASE / "DLLs"
@@ -312,7 +312,7 @@ def smoke_test(folder: Path, label: str) -> None:
 
 
 def build_single_exe(icon: Path, version: str) -> str:
-    """Embed runtime/ and app/ in one Windfall Transfer.exe, then check it unpacks and runs like on a fresh PC."""
+    """Embed runtime/ and app/ in one Windfall-Transfer.exe, then check it unpacks and runs like on a fresh PC."""
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
         payload = tmp / "payload.zip"
@@ -322,7 +322,7 @@ def build_single_exe(icon: Path, version: str) -> str:
                     if path.is_file():
                         _add(archive, path.relative_to(STAGE).as_posix(), path.read_bytes())
         payload_id = hashlib.sha256(payload.read_bytes()).hexdigest()[:12]
-        built = tmp / "Windfall Transfer.exe"
+        built = tmp / SINGLE.name
         compile_launcher(built, icon, TOOLS / "launcher.manifest", version, payload, payload_id)
         # Same launcher without the admin requirement, so the check needs no prompt; it unpacks to a temp folder.
         manifest = tmp / "check.manifest"
@@ -359,7 +359,7 @@ def remove(path: Path) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build dist/Windfall Transfer.exe.")
+    parser = argparse.ArgumentParser(description="Build dist/Windfall-Transfer.exe.")
     parser.add_argument("--version", default="", help="stamped into the exe, such as 1.2.0 or v1.2.0-beta")
     version = parser.parse_args().version or "0.0.0"
     file_version(version)  # a malformed version fails before anything is built
@@ -374,7 +374,7 @@ def main() -> None:
     copy_app()
     check_signatures(STAGE)
     write_icon(APP / "app.ico")
-    compile_launcher(STAGE / "Windfall Transfer.exe", APP / "app.ico", TOOLS / "launcher.manifest", version)
+    compile_launcher(STAGE / SINGLE.name, APP / "app.ico", TOOLS / "launcher.manifest", version)
     smoke_test(STAGE, "folder build")
     payload_id = build_single_exe(APP / "app.ico", version)
     size = sum(path.stat().st_size for path in STAGE.rglob("*") if path.is_file())

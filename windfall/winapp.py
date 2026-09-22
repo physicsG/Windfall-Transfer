@@ -62,28 +62,34 @@ def enable_dpi_awareness() -> None:
             _user32.SetProcessDPIAware()
 
 
+def _program_files() -> str:
+    return os.environ.get("PROGRAMW6432") or os.environ.get("PROGRAMFILES") or r"C:\Program Files"
+
+
 def unpacked_folder() -> str | None:
-    """Program Files\\Windfall Transfer, if this copy was unpacked there by the single-file Windfall Transfer.exe."""
+    """Program Files\\Windfall-Transfer, if the single-file Windfall-Transfer.exe unpacked this copy there."""
     folder = os.environ.get("WINDFALL_UNPACKED")  # set by the launcher
     if not folder:
         return None
     home = os.path.dirname(os.path.normpath(folder))
-    program_files = os.environ.get("PROGRAMW6432") or os.environ.get("PROGRAMFILES") or r"C:\Program Files"
-    expected = os.path.join(program_files, "Windfall Transfer")
+    expected = os.path.join(_program_files(), "Windfall-Transfer")
     # "Remove from this PC" deletes this folder, so accept nothing else.
     return home if os.path.normcase(home) == os.path.normcase(expected) else None
 
 
-def legacy_unpacked_folder() -> str | None:
-    """Program Files\\Connect App, if the app's earlier Connect App.exe unpacked itself there (and nothing else is)."""
-    program_files = os.environ.get("PROGRAMW6432") or os.environ.get("PROGRAMFILES") or r"C:\Program Files"
-    folder = os.path.join(program_files, "Connect App")
-    try:
-        entries = os.listdir(folder)
-    except OSError:
-        return None
+def legacy_unpacked_folders() -> list[str]:
+    """The Program Files folders earlier versions unpacked themselves into, if they hold nothing else."""
     ours = re.compile(r"app-[0-9a-f]{12}(\.unpacking-[0-9a-f]{32})?")
-    return folder if entries and all(ours.fullmatch(entry) for entry in entries) else None
+    found = []
+    for name in ("Windfall Transfer", "Connect App"):
+        folder = os.path.join(_program_files(), name)
+        try:
+            entries = os.listdir(folder)
+        except OSError:
+            continue
+        if entries and all(ours.fullmatch(entry) for entry in entries):
+            found.append(folder)
+    return found
 
 
 def delete_after_exit(folder: str, seconds: int = 5) -> None:

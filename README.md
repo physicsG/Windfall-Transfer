@@ -36,8 +36,8 @@ With a 64-bit [python.org](https://www.python.org) Python 3.13:
 python tools\build.py
 ```
 
-This writes `dist\Windfall Transfer.exe`, the one file to distribute: a launcher with the app, Wintun and a trimmed
-private copy of that Python embedded, unpacked to `C:\Program Files\Windfall Transfer` on first start.
+This writes `dist\Windfall-Transfer.exe`, the one file to distribute: a launcher with the app, Wintun and a trimmed
+private copy of that Python embedded, unpacked to `C:\Program Files\Windfall-Transfer` on first start.
 `--version 1.2.0` stamps a version into it. The build stops if any binary it packages isn't validly signed by the
 Python Software Foundation, Microsoft or (Wintun) WireGuard LLC.
 
@@ -53,10 +53,10 @@ it with `--lock` first. Then:
 - Lint and format: `.venv\Scripts\ruff check` and `.venv\Scripts\ruff format`
 - Type-check: `.venv\Scripts\mypy`
 - Tests: `python -m unittest discover -s tests` (no Mac or admin rights needed)
-- Run from source: `python "Windfall Transfer.pyw"`, or `pythonw "Windfall Transfer.pyw" --preview` for the window
+- Run from source: `python Windfall-Transfer.pyw`, or `pythonw Windfall-Transfer.pyw --preview` for the window
   without the bridge.
 - `python probe.py` brings up the Mac's USB network functions for 40 seconds and reports what the Mac sends. Close
   the app first: only one program can use the Mac's USB device at a time.
-- `python bridge.py` (or `Start bridge.cmd`) runs the bridge in a console.
+- `python bridge.py` (or `start-bridge.cmd`) runs the bridge in a console.
 
 `vendor/wintun/` holds Wintun 0.14.1's `wintun.dll` (amd64, signed by WireGuard LLC) and its license.

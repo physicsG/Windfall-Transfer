@@ -53,7 +53,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Windfall-Transfer
-          path: dist/Windfall Transfer.exe
+          path: dist/Windfall-Transfer.exe
           if-no-files-found: error
 
   release:
@@ -72,6 +72,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name }}
-        run: |
-          mv "Windfall Transfer.exe" Windfall-Transfer.exe
-          gh release upload "$TAG" Windfall-Transfer.exe --clobber
+        run: gh release upload "$TAG" Windfall-Transfer.exe --clobber

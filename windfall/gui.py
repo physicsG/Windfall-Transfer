@@ -18,7 +18,7 @@ from typing import Any
 
 from . import driver, smb, winapp
 from . import settings as app_settings
-from .service import ADAPTER_NAME, DATA_DIR, LEGACY_DATA_DIR, LOG_FILE, ROOT, WINTUN_DLL, BridgeService
+from .service import ADAPTER_NAME, DATA_DIR, LEGACY_DATA_DIRS, LOG_FILE, ROOT, WINTUN_DLL, BridgeService
 from .usb4 import Usb4Monitor, speed_text
 from .wintun import Wintun
 
@@ -715,8 +715,8 @@ class App:
         if unpacked:
             items.append(f"delete the copy of Windfall Transfer unpacked in {unpacked}")
         if self._legacy_leftovers():
-            items.append("delete what the app left behind under its earlier name, Connect App")
-        what = "Windfall Transfer.exe" if unpacked else "its folder"
+            items.append("delete what earlier versions of the app left behind")
+        what = "Windfall-Transfer.exe" if unpacked else "its folder"
         bullets = "\n".join(f"• {item}" for item in items)
         text = (
             f"This undoes what Windfall Transfer changed on this PC:\n\n{bullets}\n\n"
@@ -729,9 +729,9 @@ class App:
 
     @staticmethod
     def _legacy_leftovers() -> list[str]:
-        """Folders the app left under its earlier name, Connect App (settings, logs, unpacked copy)."""
-        folders = (app_settings.LEGACY_DIR, LEGACY_DATA_DIR, winapp.legacy_unpacked_folder())
-        return [folder for folder in folders if folder and os.path.isdir(folder)]
+        """Folders earlier versions of the app left behind (settings, logs, unpacked copies)."""
+        folders = (*app_settings.LEGACY_DIRS, *LEGACY_DATA_DIRS, *winapp.legacy_unpacked_folders())
+        return [folder for folder in folders if os.path.isdir(folder)]
 
     def _remove_now(self) -> None:
         addresses = self._mac_addresses()
@@ -761,7 +761,7 @@ class App:
             return
         for line in result:
             log.info("removed: %s", line)
-        what = "Windfall Transfer.exe" if winapp.unpacked_folder() else "its folder"
+        what = "Windfall-Transfer.exe" if winapp.unpacked_folder() else "its folder"
         bullets = "\n".join(f"• {line}" for line in result)
         messagebox.showinfo(
             "Windfall Transfer",

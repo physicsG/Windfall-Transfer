@@ -14,4 +14,4 @@ allowed-confusables = ["–"]  # the "to do" mark in the window
 python_version = "3.13"
 platform = "win32"
 strict = true
-files = ["windfall", "tools", "bridge.py", "probe.py", "Windfall Transfer.pyw"]
+files = ["windfall", "tools", "bridge.py", "probe.py", "Windfall-Transfer.pyw"]

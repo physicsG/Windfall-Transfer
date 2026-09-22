@@ -1,7 +1,8 @@
-"""App settings, kept per user in %APPDATA%\\Windfall Transfer\\settings.json (passwords never go here)."""
+"""App settings, kept per user in %APPDATA%\\Windfall-Transfer\\settings.json (passwords never go here)."""
 
 import json
 import os
+from collections.abc import Sequence
 from typing import TypedDict, cast
 
 
@@ -23,18 +24,16 @@ DEFAULTS: Settings = {
     "usb4_mac_ip": "",
 }
 APPDATA = os.environ.get("APPDATA") or os.path.expanduser("~")
-PATH = os.path.join(APPDATA, "Windfall Transfer", "settings.json")
-LEGACY_DIR = os.path.join(APPDATA, "ConnectApp")  # where the app kept settings when it was called Connect App
-LEGACY_PATH = os.path.join(LEGACY_DIR, "settings.json")
+PATH = os.path.join(APPDATA, "Windfall-Transfer", "settings.json")
+LEGACY_DIRS = (os.path.join(APPDATA, "Windfall Transfer"), os.path.join(APPDATA, "ConnectApp"))  # earlier names
+LEGACY_PATHS = tuple(os.path.join(folder, "settings.json") for folder in LEGACY_DIRS)
 
 
-def load(path: str = PATH, legacy: str | None = LEGACY_PATH) -> Settings:
-    """The saved settings; until there are any, the ones saved under the app's earlier name. Values of the wrong type
-    keep their defaults."""
+def load(path: str = PATH, legacy: Sequence[str] = LEGACY_PATHS) -> Settings:
+    """The saved settings; until there are any, the ones saved under the app's earlier names. Values of the wrong
+    type keep their defaults."""
     settings: dict[str, object] = dict(DEFAULTS)
-    for candidate in (path, legacy):
-        if not candidate:
-            continue
+    for candidate in (path, *legacy):
         try:
             with open(candidate, encoding="utf-8") as f:
                 stored = json.load(f)

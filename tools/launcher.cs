@@ -45,11 +45,11 @@ static class Launcher
     static int Start(string folder, string[] args)
     {
         string python = Path.Combine(folder, @"runtime\pythonw.exe");
-        string script = Path.Combine(folder, @"app\Windfall Transfer.pyw");
+        string script = Path.Combine(folder, @"app\Windfall-Transfer.pyw");
         if (!File.Exists(python) || !File.Exists(script))
         {
             MessageBox.Show("Windfall Transfer is incomplete: keep the 'runtime' and 'app' folders next to " +
-                            "Windfall Transfer.exe.", "Windfall Transfer", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            "Windfall-Transfer.exe.", "Windfall Transfer", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
         StringBuilder arguments = new StringBuilder("\"" + script + "\"");
@@ -73,7 +73,7 @@ static class Launcher
     static string Unpacked()
     {
         string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        string home = Path.Combine(programFiles, "Windfall Transfer");
+        string home = Path.Combine(programFiles, "Windfall-Transfer");
         string target = Path.Combine(home, "app-" + Payload.Id);
         if (!File.Exists(Path.Combine(target, ".complete")))
         {

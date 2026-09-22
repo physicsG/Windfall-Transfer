@@ -16,28 +16,30 @@ class UnpackedFolderTests(unittest.TestCase):
 
     def test_only_ever_program_files_windfall(self):
         self.assertEqual(
-            self.unpacked(r"C:\Program Files\Windfall Transfer\app-0123456789ab"), r"C:\Program Files\Windfall Transfer"
+            self.unpacked(r"C:\Program Files\Windfall-Transfer\app-0123456789ab"), r"C:\Program Files\Windfall-Transfer"
         )
         self.assertEqual(
-            self.unpacked(r"c:\program files\windfall transfer\app-0123456789ab\\"),
-            r"c:\program files\windfall transfer",
+            self.unpacked(r"c:\program files\windfall-transfer\app-0123456789ab\\"),
+            r"c:\program files\windfall-transfer",
         )
-        self.assertIsNone(self.unpacked(r"C:\Users\me\AppData\Local\Temp\Windfall Transfer\app-0123456789ab"))
+        self.assertIsNone(self.unpacked(r"C:\Users\me\AppData\Local\Temp\Windfall-Transfer\app-0123456789ab"))
+        self.assertIsNone(self.unpacked(r"C:\Program Files\Windfall Transfer\app-0123456789ab"))  # v1.0.0's
         self.assertIsNone(self.unpacked(r"C:\Program Files\Other\app-0123456789ab"))
         self.assertIsNone(self.unpacked(r"C:\Program Files\app-0123456789ab"))
         self.assertIsNone(self.unpacked(None))
 
-    def test_earlier_unpacked_copy_is_only_ours_if_it_holds_nothing_else(self):
+    def test_earlier_unpacked_copies_are_only_ours_if_they_hold_nothing_else(self):
         with (
             tempfile.TemporaryDirectory() as program_files,
             mock.patch.dict(os.environ, {"ProgramW6432": program_files}),
         ):
-            folder = os.path.join(program_files, "Connect App")
-            self.assertIsNone(winapp.legacy_unpacked_folder())  # not there
-            os.makedirs(os.path.join(folder, "app-0123456789ab"))
-            self.assertEqual(winapp.legacy_unpacked_folder(), folder)
-            os.makedirs(os.path.join(folder, "Plugins"))  # someone else's "Connect App": leave it alone
-            self.assertIsNone(winapp.legacy_unpacked_folder())
+            self.assertEqual(winapp.legacy_unpacked_folders(), [])  # not there
+            folders = [os.path.join(program_files, name) for name in ("Windfall Transfer", "Connect App")]
+            for folder in folders:
+                os.makedirs(os.path.join(folder, "app-0123456789ab"))
+            self.assertEqual(winapp.legacy_unpacked_folders(), folders)
+            os.makedirs(os.path.join(folders[1], "Plugins"))  # someone else's "Connect App": leave it alone
+            self.assertEqual(winapp.legacy_unpacked_folders(), folders[:1])
 
 
 if __name__ == "__main__":

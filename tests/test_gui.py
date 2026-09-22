@@ -186,13 +186,13 @@ class GuiTests(unittest.TestCase):
 
         self.app.removing = True
         with (
-            mock.patch.object(gui.winapp, "unpacked_folder", return_value=r"C:\Program Files\Windfall Transfer"),
+            mock.patch.object(gui.winapp, "unpacked_folder", return_value=r"C:\Program Files\Windfall-Transfer"),
             mock.patch.object(gui.messagebox, "askyesno", return_value=False) as ask,
         ):
             self.app._confirm_remove(left)
         text = ask.call_args[0][1]
-        self.assertIn(r"unpacked in C:\Program Files\Windfall Transfer", text)
-        self.assertIn("delete Windfall Transfer.exe", text)
+        self.assertIn(r"unpacked in C:\Program Files\Windfall-Transfer", text)
+        self.assertIn("delete Windfall-Transfer.exe", text)
 
         self.app.removing = True
         with (
@@ -200,7 +200,7 @@ class GuiTests(unittest.TestCase):
             mock.patch.object(gui.messagebox, "askyesno", return_value=False) as ask,
         ):
             self.app._confirm_remove(left)
-        self.assertIn("its earlier name, Connect App", ask.call_args[0][1])
+        self.assertIn("what earlier versions of the app left behind", ask.call_args[0][1])
 
     def test_settings_are_validated(self):
         self.app.mac_ip_var.set("10.78.0.2")

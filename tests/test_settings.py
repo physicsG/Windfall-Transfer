@@ -9,8 +9,10 @@ from windfall import settings
 class SettingsTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self.dir.name, "Windfall Transfer", "settings.json")
-        self.legacy = os.path.join(self.dir.name, "ConnectApp", "settings.json")
+        self.path = os.path.join(self.dir.name, "Windfall-Transfer", "settings.json")
+        self.legacy = [
+            os.path.join(self.dir.name, name, "settings.json") for name in ("Windfall Transfer", "ConnectApp")
+        ]
 
     def tearDown(self):
         self.dir.cleanup()
@@ -34,9 +36,11 @@ class SettingsTests(unittest.TestCase):
             f.write("{not json")
         self.assertEqual(self.load(), settings.DEFAULTS)
 
-    def test_settings_from_the_earlier_name_carry_over_until_saved_again(self):
-        settings.save(dict(settings.DEFAULTS, mac_user="alex"), self.legacy)
+    def test_settings_from_earlier_names_carry_over_until_saved_again(self):
+        settings.save(dict(settings.DEFAULTS, mac_user="alex"), self.legacy[1])
         self.assertEqual(self.load()["mac_user"], "alex")
+        settings.save(dict(settings.DEFAULTS, mac_user="kim"), self.legacy[0])
+        self.assertEqual(self.load()["mac_user"], "kim")
         settings.save(dict(settings.DEFAULTS, mac_user="sam"), self.path)
         self.assertEqual(self.load()["mac_user"], "sam")
 
