@@ -2,13 +2,15 @@
 app/). The runtime is a trimmed copy of the 64-bit python.org Python running this script; the launcher is compiled
 with the C# compiler that ships with Windows.
 
-    python tools/build.py
+    python tools/build.py [--version 1.2.0]
 """
 
+import argparse
 import hashlib
 import modulefinder
 import os
 import py_compile
+import re
 import shutil
 import struct
 import subprocess
@@ -30,7 +32,9 @@ BASE = Path(sys.base_prefix)
 STDLIB = BASE / "Lib"
 DLLS = BASE / "DLLs"
 TAG = f"python{sys.version_info.major}{sys.version_info.minor}"
-CSC = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
+WINDIR = Path(os.environ.get("WINDIR", r"C:\Windows"))
+CSC = WINDIR / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
+POWERSHELL = WINDIR / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
 
 WHOLE_PACKAGES = ["encodings", "tkinter"]  # codecs are looked up by name at run time; tkinter's parts load lazily
 EXCLUDES = [
@@ -68,6 +72,9 @@ RUNTIME_FILES = ["python.exe", "pythonw.exe", f"{TAG}.dll", "python3.dll", "vcru
 EXTENSION_DLLS = {"_ctypes": ["libffi-*.dll"], "_tkinter": ["tcl*.dll", "tk*.dll", "zlib1.dll"]}
 TCL_FOLDERS = ["tcl8.6", "tk8.6", "tcl8"]
 TCL_SKIP = shutil.ignore_patterns("demos", "tzdata")
+MICROSOFT = ("Microsoft Corporation", "Microsoft Windows Software Compatibility Publisher")
+SIGNERS = {"vcruntime140.dll": MICROSOFT, "vcruntime140_1.dll": MICROSOFT, "wintun.dll": ("WireGuard LLC",)}
+PYTHON_SIGNER = ("Python Software Foundation",)  # every other binary comes from the python.org installation
 
 
 def find_modules() -> tuple[dict[Path, Path], set[Path]]:
@@ -121,6 +128,35 @@ def copy_runtime(extensions: set[Path]) -> None:
             shutil.copytree(BASE / "tcl" / folder, RUNTIME / "tcl" / folder, ignore=TCL_SKIP)
     # Isolated: only these paths, no site-packages, and PYTHONPATH/PYTHONHOME are ignored.
     (RUNTIME / f"{TAG}._pth").write_text(f"{TAG}.zip\n.\n..\\app\n", encoding="utf-8")
+
+
+def check_signatures(folder: Path) -> None:
+    """Refuse to package a binary without a valid Authenticode signature from whoever should have signed it."""
+    binaries = sorted(path for path in folder.rglob("*") if path.suffix.lower() in (".exe", ".dll", ".pyd"))
+    script = (
+        "foreach ($s in Get-AuthenticodeSignature -LiteralPath (Get-Content -LiteralPath $env:FILES -Encoding UTF8)) {"
+        " $name = if ($s.SignerCertificate) { $s.SignerCertificate.GetNameInfo('SimpleName', $false) };"
+        ' "$($s.Status)`t$name" }'
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        listing = Path(tmp) / "files.txt"
+        listing.write_text("\n".join(map(str, binaries)), encoding="utf-8")
+        result = subprocess.run(
+            [str(POWERSHELL), "-NoProfile", "-NonInteractive", "-Command", script],
+            env={**os.environ, "FILES": str(listing)},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    bad = []
+    for path, line in zip(binaries, result.stdout.strip().split("\n"), strict=True):
+        status, _, signer = line.partition("\t")
+        expected = SIGNERS.get(path.name.lower(), PYTHON_SIGNER)
+        if status != "Valid" or signer not in expected:
+            bad.append(f"{path.relative_to(folder)}: {status}, signed by {signer or 'nobody'}")
+    if bad:
+        raise SystemExit("unexpected signatures, not building:\n" + "\n".join(bad))
+    print(f"signatures: {len(binaries)} binaries OK")
 
 
 def copy_app() -> None:
@@ -209,8 +245,17 @@ def write_icon(path: Path, sizes: tuple[int, ...] = (16, 20, 24, 32, 40, 48, 64,
     path.write_bytes(struct.pack("<HHH", 0, 1, len(images)) + entries + b"".join(images))
 
 
+def file_version(version: str) -> str:
+    """The four numbers Windows shows as the file version: "v1.2.0-beta.1" gives "1.2.0.0"."""
+    match = re.fullmatch(r"v?(\d+(?:\.\d+){0,3})(?:[-+][0-9A-Za-z.-]+)?", version)
+    if not match or any(int(number) > 65534 for number in match.group(1).split(".")):
+        raise SystemExit(f"--version {version!r}: expected a version such as 1.2.0 or v1.2.0-beta")
+    numbers = match.group(1).split(".")
+    return ".".join(numbers + ["0"] * (4 - len(numbers)))
+
+
 def compile_launcher(
-    out: Path, icon: Path, manifest: Path, payload: Path | None = None, payload_id: str | None = None
+    out: Path, icon: Path, manifest: Path, version: str, payload: Path | None = None, payload_id: str | None = None
 ) -> None:
     """The folder launcher, or with a payload the single-file one (ONEFILE: the payload is embedded)."""
     if not CSC.exists():
@@ -226,18 +271,24 @@ def compile_launcher(
         f"/out:{out}",
         "/reference:System.Windows.Forms.dll",
     ]
-    sources = [str(TOOLS / "launcher.cs")]
+    numbers = file_version(version)
+    generated = (
+        f'[assembly: System.Reflection.AssemblyVersion("{numbers}")]\n'
+        f'[assembly: System.Reflection.AssemblyFileVersion("{numbers}")]\n'
+        f'[assembly: System.Reflection.AssemblyInformationalVersion("{version.removeprefix("v")}")]\n'
+    )
     if payload:
-        generated = payload.with_name("payload.cs")
-        generated.write_text(f'static class Payload {{ public const string Id = "{payload_id}"; }}\n', encoding="utf-8")
+        generated += f'static class Payload {{ public const string Id = "{payload_id}"; }}\n'
         command += [
             "/define:ONEFILE",
             f"/resource:{payload},payload.zip",
             "/reference:System.IO.Compression.dll",
             "/reference:System.IO.Compression.FileSystem.dll",
         ]
-        sources.append(str(generated))
-    subprocess.run(command + sources, check=True)
+    with tempfile.TemporaryDirectory() as tmp_name:
+        source = Path(tmp_name) / "generated.cs"
+        source.write_text(generated, encoding="utf-8")
+        subprocess.run([*command, str(TOOLS / "launcher.cs"), str(source)], check=True)
 
 
 def smoke_test(folder: Path, label: str) -> None:
@@ -260,7 +311,7 @@ def smoke_test(folder: Path, label: str) -> None:
     print(f"{label}: OK ({result.stdout.strip()})")
 
 
-def build_single_exe(icon: Path) -> str:
+def build_single_exe(icon: Path, version: str) -> str:
     """Embed runtime/ and app/ in one Windfall Transfer.exe, then check it unpacks and runs like on a fresh PC."""
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
@@ -272,7 +323,7 @@ def build_single_exe(icon: Path) -> str:
                         _add(archive, path.relative_to(STAGE).as_posix(), path.read_bytes())
         payload_id = hashlib.sha256(payload.read_bytes()).hexdigest()[:12]
         built = tmp / "Windfall Transfer.exe"
-        compile_launcher(built, icon, TOOLS / "launcher.manifest", payload, payload_id)
+        compile_launcher(built, icon, TOOLS / "launcher.manifest", version, payload, payload_id)
         # Same launcher without the admin requirement, so the check needs no prompt; it unpacks to a temp folder.
         manifest = tmp / "check.manifest"
         manifest.write_text(
@@ -280,7 +331,7 @@ def build_single_exe(icon: Path) -> str:
             encoding="utf-8",
         )
         checker = tmp / "check.exe"
-        compile_launcher(checker, icon, manifest, payload, payload_id)
+        compile_launcher(checker, icon, manifest, version, payload, payload_id)
         unpacked = tmp / "unpacked"
         subprocess.run([str(checker), "--extract-only", str(unpacked)], check=True)
         smoke_test(unpacked, "single-file exe, unpacked")
@@ -308,6 +359,10 @@ def remove(path: Path) -> bool:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Build dist/Windfall Transfer.exe.")
+    parser.add_argument("--version", default="", help="stamped into the exe, such as 1.2.0 or v1.2.0-beta")
+    version = parser.parse_args().version or "0.0.0"
+    file_version(version)  # a malformed version fails before anything is built
     if sys.maxsize <= 2**32 or not (BASE / f"{TAG}.dll").exists():
         raise SystemExit("run this with a 64-bit python.org Python installation")
     if not remove(STAGE):
@@ -317,17 +372,18 @@ def main() -> None:
     write_stdlib_zip(sources)
     copy_runtime(extensions)
     copy_app()
+    check_signatures(STAGE)
     write_icon(APP / "app.ico")
-    compile_launcher(STAGE / "Windfall Transfer.exe", APP / "app.ico", TOOLS / "launcher.manifest")
+    compile_launcher(STAGE / "Windfall Transfer.exe", APP / "app.ico", TOOLS / "launcher.manifest", version)
     smoke_test(STAGE, "folder build")
-    payload_id = build_single_exe(APP / "app.ico")
+    payload_id = build_single_exe(APP / "app.ico", version)
     size = sum(path.stat().st_size for path in STAGE.rglob("*") if path.is_file())
     print(
         f"{len(sources)} standard-library modules, {len(extensions)} extension modules: "
         f"{', '.join(sorted(path.name for path in extensions))}"
     )
     print(f"built {STAGE} ({size / 1e6:.1f} MB)")
-    print(f"built {SINGLE} ({SINGLE.stat().st_size / 1e6:.1f} MB, version {payload_id}): the file to distribute")
+    print(f"built {SINGLE} ({SINGLE.stat().st_size / 1e6:.1f} MB, version {version}, payload {payload_id})")
 
 
 if __name__ == "__main__":
