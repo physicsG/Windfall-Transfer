@@ -6,7 +6,7 @@ import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from windfall import winapp  # noqa: E402
+from windfall import winapp
 
 try:
     from windfall.gui import main

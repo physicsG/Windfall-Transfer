@@ -38,7 +38,7 @@ class SmbError(OSError):
     pass
 
 
-def _error(code):
+def _error(code: int) -> SmbError:
     return SmbError(code, _HINTS.get(code) or f"{ctypes.FormatError(code).strip()} (error {code})")
 
 
@@ -102,7 +102,7 @@ _advapi32.CredFree.restype = None
 _advapi32.CredFree.argtypes = [ctypes.c_void_p]
 
 
-def list_shares(server):
+def list_shares(server: str) -> list[tuple[str, str]]:
     """Shared folders on \\\\server as a sorted list of (name, description), without hidden/admin shares."""
     buf = ctypes.c_void_p()
     read, total, resume = wt.DWORD(), wt.DWORD(), wt.DWORD()
@@ -118,7 +118,7 @@ def list_shares(server):
     try:
         if status not in (0, ERROR_MORE_DATA):
             raise _error(status)
-        shares = []
+        shares: list[tuple[str, str]] = []
         if read.value:
             for entry in ctypes.cast(buf, ctypes.POINTER(SHARE_INFO_1 * read.value)).contents:
                 name = entry.netname or ""
@@ -130,7 +130,7 @@ def list_shares(server):
             _netapi32.NetApiBufferFree(buf)
 
 
-def sign_in(server, user, password):
+def sign_in(server: str, user: str, password: str) -> None:
     """Open a signed-in session to \\\\server for this process, replacing any earlier one."""
     resource = NETRESOURCEW(dwType=0, lpRemoteName=f"\\\\{server}\\IPC$")
     status = _mpr.WNetAddConnection2W(ctypes.byref(resource), password, user, 0)
@@ -141,11 +141,11 @@ def sign_in(server, user, password):
         raise _error(status)
 
 
-def sign_out(server):
+def sign_out(server: str) -> None:
     _mpr.WNetCancelConnection2W(f"\\\\{server}\\IPC$", 0, True)
 
 
-def save_credentials(server, user, password):
+def save_credentials(server: str, user: str, password: str) -> None:
     """Store the sign-in for \\\\server in Windows Credential Manager (used by Explorer as well)."""
     blob = password.encode("utf-16-le")
     buffer = (ctypes.c_ubyte * max(len(blob), 1)).from_buffer_copy(blob or b"\0")
@@ -161,25 +161,26 @@ def save_credentials(server, user, password):
         raise _error(ctypes.get_last_error())
 
 
-def saved_user(server):
+def saved_user(server: str) -> str | None:
     """The user name saved for \\\\server in Credential Manager, or None."""
     cred = ctypes.POINTER(CREDENTIALW)()
     if not _advapi32.CredReadW(server, CRED_TYPE_DOMAIN_PASSWORD, 0, ctypes.byref(cred)):
         return None
     try:
-        return cred.contents.UserName
+        user: str | None = cred.contents.UserName
+        return user
     finally:
         _advapi32.CredFree(cred)
 
 
-def forget_credentials(server):
+def forget_credentials(server: str) -> None:
     if not _advapi32.CredDeleteW(server, CRED_TYPE_DOMAIN_PASSWORD, 0):
         err = ctypes.get_last_error()
         if err != ERROR_NOT_FOUND:
             raise _error(err)
 
 
-def port_open(host, port=445, timeout=1.5):
+def port_open(host: str, port: int = 445, timeout: float = 1.5) -> bool:
     try:
         with socket.create_connection((str(host), port), timeout=timeout):
             return True

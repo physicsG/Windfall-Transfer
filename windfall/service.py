@@ -12,8 +12,8 @@ from . import packets as pk
 from .dhcp import DhcpServer
 from .driver import APPLE_VID, KNOWN_MAC_PIDS
 from .ncm import NcmFunction, find_functions
-from .winusb import WinUsbError, open_device
-from .wintun import Wintun, add_ipv4_address, interface_index
+from .wintun import Adapter, Session, Wintun, add_ipv4_address, interface_index
+from .winusb import WinUsbDevice, WinUsbError, open_device
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINTUN_DLL = os.path.join(ROOT, "vendor", "wintun", "wintun.dll")
@@ -29,16 +29,16 @@ log = logging.getLogger("bridge")
 class Bridge:
     """Moves traffic between the Mac's USB network function (Ethernet frames) and the adapter (IP packets)."""
 
-    def __init__(self, fn, session, windows_ip, mac_ip, netmask):
+    def __init__(self, fn: NcmFunction, session: Session, windows_ip: bytes, mac_ip: bytes, netmask: bytes) -> None:
         self.fn = fn
         self.session = session
         self.our_mac = fn.host_mac or b"\x02\x00\x5e\xc0\xde\x01"
         self.windows_ip = windows_ip
-        self.broadcast = bytes(a | (~m & 0xFF) for a, m in zip(windows_ip, netmask))
+        self.broadcast = bytes(a | (~m & 0xFF) for a, m in zip(windows_ip, netmask, strict=True))
         self.dhcp = DhcpServer(windows_ip, mac_ip, netmask)
         self.max_packet = (fn.max_datagram or 1514) - 14
-        self.peer_mac = None
-        self.peer_addresses = set()  # the Mac's own IPs; we never answer ARP/NDP for those
+        self.peer_mac: bytes | None = None
+        self.peer_addresses: set[bytes] = set()  # the Mac's own IPs; we never answer ARP/NDP for those
         self.stop = threading.Event()
         self.mac_configured = threading.Event()  # set once the Mac accepted its address
         self.counters = {"to_mac": 0, "to_mac_bytes": 0, "to_windows": 0, "to_windows_bytes": 0, "dropped": 0}
@@ -46,7 +46,7 @@ class Bridge:
 
     # ---- Mac -> Windows ----
 
-    def usb_loop(self):
+    def usb_loop(self) -> None:
         while not self.stop.is_set():
             try:
                 frames = self.fn.receive()
@@ -68,12 +68,12 @@ class Bridge:
                 except Exception:
                     log.exception("error handling a frame from the Mac")
 
-    def _lost(self, error):
+    def _lost(self, error: OSError) -> None:
         if not self.stop.is_set():
             log.info("USB link to the Mac ended (%s)", error.strerror or error)
         self.stop.set()
 
-    def from_mac(self, frame):
+    def from_mac(self, frame: bytes) -> None:
         if len(frame) < 14:
             return
         src_mac = frame[6:12]
@@ -105,7 +105,7 @@ class Bridge:
         else:
             self.counters["dropped"] += 1
 
-    def _arp(self, frame):
+    def _arp(self, frame: bytes) -> None:
         info = pk.inspect(frame)
         if info["type"] != "arp":
             return
@@ -116,7 +116,7 @@ class Bridge:
         if info["arp_op"] == 1 and any(spa) and spa != tpa and tpa == self.windows_ip:
             self.fn.send([pk.arp(2, self.our_mac, self.windows_ip, info["arp_sha"], spa, dst_mac=info["src_mac"])])
 
-    def _dhcp(self, packet):
+    def _dhcp(self, packet: bytes) -> bool:
         ihl = (packet[0] & 0x0F) * 4
         udp = packet[ihl:]
         if len(udp) < 8 or struct.unpack_from("!HH", udp) != (68, 67):
@@ -134,7 +134,7 @@ class Bridge:
                 log.info("DHCP %s sent to the Mac", kind)
         return True  # DHCP client traffic is for us, not for Windows
 
-    def _neighbor_solicitation(self, packet, src_mac):
+    def _neighbor_solicitation(self, packet: bytes, src_mac: bytes) -> bool:
         """IPv6 'who has X?' from the Mac: answer for anything that isn't the Mac's own address (i.e. Windows)."""
         icmp = packet[40:]
         if len(icmp) < 24 or icmp[0] != 135:
@@ -146,8 +146,9 @@ class Bridge:
 
     # ---- Windows -> Mac ----
 
-    def tun_loop(self):
-        batch, size = [], 0
+    def tun_loop(self) -> None:
+        batch: list[bytes] = []
+        size = 0
         while not self.stop.is_set():
             try:
                 packet = self.session.receive()
@@ -170,7 +171,7 @@ class Bridge:
                 self._flush(batch)
                 batch, size = [], 0
 
-    def _flush(self, batch):
+    def _flush(self, batch: list[bytes]) -> None:
         try:
             self.fn.send(batch)
         except OSError as e:
@@ -179,13 +180,14 @@ class Bridge:
         self.counters["to_mac"] += len(batch)
         self.counters["to_mac_bytes"] += sum(len(f) - 14 for f in batch)
 
-    def to_ethernet(self, packet):
+    def to_ethernet(self, packet: bytes) -> bytes | None:
         if len(packet) > self.max_packet:
             if not self._oversize_warned:
                 log.warning("dropping %d-byte packets: the link carries at most %d", len(packet), self.max_packet)
                 self._oversize_warned = True
             return None
         version = packet[0] >> 4
+        mac: bytes | None
         if version == 4 and len(packet) >= 20:
             dst = packet[16:20]
             if dst == b"\xff\xff\xff\xff" or dst == self.broadcast:
@@ -206,7 +208,7 @@ class Bridge:
         return mac + self.our_mac + struct.pack("!H", ethertype) + packet
 
 
-def _rates(before, after, seconds):
+def _rates(before: dict[str, int], after: dict[str, int], seconds: float) -> tuple[float, float]:
     return (
         (after["to_mac_bytes"] - before["to_mac_bytes"]) / seconds / 1e6,
         (after["to_windows_bytes"] - before["to_windows_bytes"]) / seconds / 1e6,
@@ -219,7 +221,9 @@ class BridgeService:
 
     STOPPED, STARTING, WAITING, CONNECTED, FAILED = "stopped", "starting", "waiting", "connected", "failed"
 
-    def __init__(self, windows_ip="10.77.0.1", mac_ip="10.77.0.2", prefix=24, wintun_dll=WINTUN_DLL):
+    def __init__(
+        self, windows_ip: str = "10.77.0.1", mac_ip: str = "10.77.0.2", prefix: int = 24, wintun_dll: str = WINTUN_DLL
+    ) -> None:
         self.windows_ip = ipaddress.IPv4Address(windows_ip)
         self.mac_ip = ipaddress.IPv4Address(mac_ip)
         self.prefix = int(prefix)
@@ -230,23 +234,23 @@ class BridgeService:
             raise ValueError("the Mac's address must be a different address in the same subnet as this PC's")
         self.wintun_dll = wintun_dll
         self.state = self.STOPPED
-        self.error = None
-        self.waiting_reason = None  # why the Mac can't be used yet, once the wait drags on
+        self.error: str | None = None
+        self.waiting_reason: str | None = None  # why the Mac can't be used yet, once the wait drags on
         self.rates = (0.0, 0.0)  # MB/s to the Mac, to Windows
-        self._bridge = None
+        self._bridge: Bridge | None = None
         self._quit = threading.Event()
-        self._thread = None
+        self._thread: threading.Thread | None = None
 
     @property
-    def running(self):
+    def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
     @property
-    def mac_configured(self):
+    def mac_configured(self) -> bool:
         bridge = self._bridge
         return bool(bridge and bridge.mac_configured.is_set())
 
-    def start(self):
+    def start(self) -> None:
         if self.running:
             return
         self._quit.clear()
@@ -255,12 +259,12 @@ class BridgeService:
         self._thread = threading.Thread(target=self._run, name="bridge", daemon=True)
         self._thread.start()
 
-    def stop(self, timeout=10):
+    def stop(self, timeout: float = 10) -> None:
         self._quit.set()
         if self._thread:
             self._thread.join(timeout)
 
-    def _run(self):
+    def _run(self) -> None:
         try:
             wintun = Wintun(
                 self.wintun_dll,
@@ -276,6 +280,7 @@ class BridgeService:
                         ["netsh", "interface", family, "set", "subinterface", str(index), "mtu=1500", "store=active"],
                         capture_output=True,
                         creationflags=subprocess.CREATE_NO_WINDOW,
+                        check=False,
                     )
                 log.info("this PC is %s on the cable; the Mac gets %s", self.windows_ip, self.mac_ip)
                 self._serve(adapter)
@@ -289,13 +294,13 @@ class BridgeService:
             self.state = self.STOPPED
             log.info("bridge stopped")
 
-    def _serve(self, adapter):
+    def _serve(self, adapter: Adapter) -> None:
         while not self._quit.is_set():
             self.state = self.WAITING
             device = self._wait_for_mac()
             if device is None:
                 return
-            session = None
+            session: Session | None = None
             try:
                 session = adapter.start_session()  # the adapter shows as connected while a session is open
                 self.state = self.CONNECTED
@@ -313,9 +318,11 @@ class BridgeService:
                     session.close()
                 device.close()
 
-    def _wait_for_mac(self, poll_seconds=1.0, report_after=3.0):
+    def _wait_for_mac(self, poll_seconds: float = 1.0, report_after: float = 3.0) -> WinUsbDevice | None:
         """The Mac's USB device once it can be opened, or None when stopping. Explains only if the wait drags on."""
-        reason, since, reported = None, time.monotonic(), None
+        reason: str | None = None
+        reported: str | None = None
+        since = time.monotonic()
         self.waiting_reason = None
         while not self._quit.is_set():
             try:
@@ -330,8 +337,8 @@ class BridgeService:
         return None
 
     @staticmethod
-    def _open_mac():
-        error = None
+    def _open_mac() -> WinUsbDevice:
+        error = WinUsbError(2, "no Mac is connected")
         for pid in sorted(KNOWN_MAC_PIDS):
             try:
                 return open_device(APPLE_VID, pid)
@@ -339,7 +346,7 @@ class BridgeService:
                 error = e
         raise error
 
-    def _run_connection(self, device, session):
+    def _run_connection(self, device: WinUsbDevice, session: Session) -> None:
         """Bridge one USB connection to the Mac until it drops or the service stops."""
         functions = find_functions(device)
         if not functions:
@@ -370,7 +377,7 @@ class BridgeService:
                 t.join(timeout=6)  # longer than the write timeout, so neither thread outlives the session
             fn.stop()
 
-    def _monitor(self, bridge, sample=1.0, report_every=5.0):
+    def _monitor(self, bridge: Bridge, sample: float = 1.0, report_every: float = 5.0) -> None:
         """Keep self.rates current (and log busy periods) until the connection drops or the service stops."""
         last_sample = last_report = time.monotonic()
         sampled = reported = dict(bridge.counters)

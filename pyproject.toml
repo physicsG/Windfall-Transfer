@@ -8,9 +8,10 @@ extend-include = ["*.pyw"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "PIE", "PGH", "RUF", "LOG", "G", "PLE", "PLW", "PERF", "FURB", "A"]
+allowed-confusables = ["–"]  # the "to do" mark in the window
 
 [tool.mypy]
 python_version = "3.13"
 platform = "win32"
 strict = true
-files = ["windfall", "tools", "bridge.py", "probe.py"]
+files = ["windfall", "tools", "bridge.py", "probe.py", "Windfall Transfer.pyw"]

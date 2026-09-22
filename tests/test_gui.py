@@ -49,7 +49,7 @@ class GuiTests(unittest.TestCase):
         patches = [
             mock.patch.object(app_settings, "load", return_value=dict(app_settings.DEFAULTS)),
             mock.patch.object(app_settings, "save"),
-            mock.patch.object(smb, "saved_user", side_effect=lambda ip: self.saved.get(ip)),
+            mock.patch.object(smb, "saved_user", side_effect=self.saved.get),
             mock.patch.object(gui, "LOG_FILE", os.path.join(self.dir.name, "bridge.log")),
             mock.patch.object(gui.App, "_legacy_leftovers", return_value=[]),
         ]

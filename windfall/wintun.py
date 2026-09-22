@@ -3,6 +3,7 @@
 import ctypes
 import ctypes.wintypes as wt
 import os
+from collections.abc import Callable
 
 from .winusb import GUID
 
@@ -21,7 +22,7 @@ _iphlpapi = ctypes.WinDLL("iphlpapi", use_last_error=True)
 _LOGGER = ctypes.WINFUNCTYPE(None, ctypes.c_int, ctypes.c_uint64, ctypes.c_wchar_p)
 
 
-def _error(what, err=None):
+def _error(what: str, err: int | None = None) -> OSError:
     err = ctypes.get_last_error() if err is None else err
     return OSError(err, f"{what}: {ctypes.FormatError(err).strip()} (error {err})")
 
@@ -29,7 +30,7 @@ def _error(what, err=None):
 class Wintun:
     """The loaded wintun.dll."""
 
-    def __init__(self, dll_path, log=None):
+    def __init__(self, dll_path: str, log: Callable[[int, str], None] | None = None) -> None:
         if not os.path.exists(dll_path):
             raise FileNotFoundError(f"wintun.dll not found at {dll_path}")
         d = self._dll = ctypes.WinDLL(dll_path, use_last_error=True)
@@ -51,20 +52,20 @@ class Wintun:
             fn = getattr(d, name)
             fn.restype = restype
             fn.argtypes = argtypes
-        self._logger = None
-        if log:  # log(level, message); level 0 = info, 1 = warning, 2 = error
-            self._logger = _LOGGER(lambda level, timestamp, message: log(level, message))  # keep a reference
+        # log(level, message) gets level 0 = info, 1 = warning, 2 = error. The DLL keeps calling _logger.
+        self._logger = _LOGGER(lambda level, timestamp, message: log(level, message)) if log else None
+        if self._logger:
             d.WintunSetLogger(self._logger)
 
-    def driver_version(self):
+    def driver_version(self) -> str | None:
         version = self._dll.WintunGetRunningDriverVersion()
         return f"{version >> 16}.{version & 0xFFFF}" if version else None
 
-    def delete_driver(self):
+    def delete_driver(self) -> bool:
         """Remove the Wintun driver from Windows, unless another app's adapter (Tailscale, WireGuard...) uses it."""
         return bool(self._dll.WintunDeleteDriver())
 
-    def create_adapter(self, name, tunnel_type, guid_text):
+    def create_adapter(self, name: str, tunnel_type: str, guid_text: str) -> "Adapter":
         guid = GUID.parse(guid_text)
         handle = self._dll.WintunCreateAdapter(name, tunnel_type, ctypes.byref(guid))
         if not handle:
@@ -73,21 +74,21 @@ class Wintun:
 
 
 class Adapter:
-    def __init__(self, dll, handle, name):
+    def __init__(self, dll: ctypes.WinDLL, handle: int, name: str) -> None:
         self._dll = dll
-        self.handle = handle
+        self.handle: int | None = handle
         self.name = name
         luid = ctypes.c_uint64()
         dll.WintunGetAdapterLUID(handle, ctypes.byref(luid))
         self.luid = luid.value
 
-    def start_session(self, capacity=0x400000):
+    def start_session(self, capacity: int = 0x400000) -> "Session":
         handle = self._dll.WintunStartSession(self.handle, capacity)
         if not handle:
             raise _error("WintunStartSession")
         return Session(self._dll, handle)
 
-    def close(self):
+    def close(self) -> None:
         """Removes the adapter (it was created by this process)."""
         if self.handle:
             self._dll.WintunCloseAdapter(self.handle)
@@ -97,13 +98,13 @@ class Adapter:
 class Session:
     """Packet rings between this process and the Windows network stack."""
 
-    def __init__(self, dll, handle):
+    def __init__(self, dll: ctypes.WinDLL, handle: int) -> None:
         self._dll = dll
-        self.handle = handle
+        self.handle: int | None = handle
         self.read_event = dll.WintunGetReadWaitEvent(handle)
         self._size = wt.DWORD()
 
-    def receive(self):
+    def receive(self) -> bytes | None:
         """Next IP packet Windows wants to send, or None if there is none. EOFError when the adapter goes away."""
         ptr = self._dll.WintunReceivePacket(self.handle, ctypes.byref(self._size))
         if not ptr:
@@ -118,11 +119,11 @@ class Session:
         finally:
             self._dll.WintunReleaseReceivePacket(self.handle, ptr)
 
-    def wait(self, timeout_ms):
+    def wait(self, timeout_ms: int) -> bool:
         """Wait until Windows has packets for us (or the timeout passes)."""
-        return _kernel32.WaitForSingleObject(self.read_event, timeout_ms) == WAIT_OBJECT_0
+        return bool(_kernel32.WaitForSingleObject(self.read_event, timeout_ms) == WAIT_OBJECT_0)
 
-    def send(self, packet):
+    def send(self, packet: bytes) -> bool:
         """Hand an IP packet to Windows. Returns False when the ring is full and the packet was dropped."""
         ptr = self._dll.WintunAllocateSendPacket(self.handle, len(packet))
         if not ptr:
@@ -136,7 +137,7 @@ class Session:
         self._dll.WintunSendPacket(self.handle, ptr)
         return True
 
-    def close(self):
+    def close(self) -> None:
         if self.handle:
             self._dll.WintunEndSession(self.handle)
             self.handle = None
@@ -176,7 +177,7 @@ _iphlpapi.ConvertInterfaceLuidToIndex.restype = wt.DWORD
 _iphlpapi.ConvertInterfaceLuidToIndex.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.POINTER(wt.ULONG)]
 
 
-def add_ipv4_address(luid, address, prefix_length):
+def add_ipv4_address(luid: int, address: bytes, prefix_length: int) -> None:
     """Assign a static IPv4 address (4 raw bytes) to the interface. Needs administrator rights."""
     row = MIB_UNICASTIPADDRESS_ROW()
     _iphlpapi.InitializeUnicastIpAddressEntry(ctypes.byref(row))
@@ -190,7 +191,7 @@ def add_ipv4_address(luid, address, prefix_length):
         raise _error("CreateUnicastIpAddressEntry", err)
 
 
-def interface_index(luid):
+def interface_index(luid: int) -> int:
     index = wt.ULONG()
     err = _iphlpapi.ConvertInterfaceLuidToIndex(ctypes.byref(ctypes.c_uint64(luid)), ctypes.byref(index))
     if err:

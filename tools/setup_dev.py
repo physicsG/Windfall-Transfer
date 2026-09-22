@@ -14,8 +14,6 @@ VENV = ROOT / ".venv"
 
 
 def main() -> None:
-    if sys.version_info < (3, 13):
-        raise SystemExit("run this with Python 3.13 or newer")
     with open(ROOT / "pyproject.toml", "rb") as f:
         requirements: list[str] = tomllib.load(f)["dependency-groups"]["dev"]
     python = VENV / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")

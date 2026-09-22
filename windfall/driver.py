@@ -1,13 +1,16 @@
 """The Mac's USB driver: set up Windows' own WinUSB (winusb.inf, signed by Microsoft, so no driver package or
 certificate is added), and remove it again along with what Zadig adds."""
 
+import contextlib
 import ctypes
 import ctypes.wintypes as wt
 import glob
 import os
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from .winusb import GUID
 
@@ -86,8 +89,8 @@ _crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
 _DEV = ctypes.POINTER(SP_DEVINFO_DATA)
 
 
-def _fn(dll, name, restype, *argtypes):
-    function = getattr(dll, name)
+def _fn(dll: ctypes.WinDLL, name: str, restype: Any, *argtypes: Any) -> Callable[..., Any]:
+    function = dll[name]
     function.restype = restype
     function.argtypes = list(argtypes)
     return function
@@ -219,12 +222,12 @@ _CertDelete = _fn(_crypt32, "CertDeleteCertificateFromStore", wt.BOOL, ctypes.c_
 _CertFree = _fn(_crypt32, "CertFreeCertificateContext", wt.BOOL, ctypes.c_void_p)
 
 
-def _error(what, err=None):
+def _error(what: str, err: int | None = None) -> OSError:
     err = ctypes.get_last_error() if err is None else err
     return OSError(err, f"{what}: {ctypes.FormatError(err).strip()} (error {err})")
 
 
-def _check(ok, what):
+def _check(ok: object, what: str) -> None:
     if not ok:
         raise _error(what)
 
@@ -238,30 +241,26 @@ class MacDevice:
     name: str  # what the device calls itself ("Mac")
 
     @property
-    def ready(self):
+    def ready(self) -> bool:
         return self.service.lower() == "winusb"
 
 
-def is_mac(pid, name):
+def is_mac(pid: int, name: str) -> bool:
     return pid in KNOWN_MAC_PIDS or name == "Mac"
 
 
-def _string(buf):
-    return ctypes.wstring_at(ctypes.addressof(buf))
-
-
-def _instance_id(hset, dev):
+def _instance_id(hset: int, dev: SP_DEVINFO_DATA) -> str:
     buf = ctypes.create_unicode_buffer(512)
     return buf.value if _GetInstanceId(hset, ctypes.byref(dev), buf, 512, None) else ""
 
 
-def _registry_string(hset, dev, prop):
+def _registry_string(hset: int, dev: SP_DEVINFO_DATA, prop: int) -> str:
     buf = ctypes.create_unicode_buffer(512)
     ok = _GetRegistryProperty(hset, ctypes.byref(dev), prop, None, buf, ctypes.sizeof(buf), None)
     return buf.value if ok else ""
 
 
-def _device_property_string(hset, dev, key):
+def _device_property_string(hset: int, dev: SP_DEVINFO_DATA, key: DEVPROPKEY) -> str:
     buf = ctypes.create_unicode_buffer(512)
     kind = wt.ULONG()
     ok = _GetDeviceProperty(
@@ -270,17 +269,17 @@ def _device_property_string(hset, dev, key):
     return buf.value if ok else ""
 
 
-def _present(devinst):
+def _present(devinst: int) -> bool:
     status, problem = wt.ULONG(), wt.ULONG()
-    return _GetDevNodeStatus(ctypes.byref(status), ctypes.byref(problem), devinst, 0) == CR_SUCCESS
+    return bool(_GetDevNodeStatus(ctypes.byref(status), ctypes.byref(problem), devinst, 0) == CR_SUCCESS)
 
 
-def find_macs():
+def find_macs() -> list[MacDevice]:
     """Macs this PC knows as USB devices, plugged in now or before."""
     hset = _GetClassDevs(None, "USB", None, DIGCF_ALLCLASSES)
     if not hset or hset == INVALID_HANDLE_VALUE:
         raise _error("list USB devices")
-    macs = []
+    macs: list[MacDevice] = []
     try:
         index = 0
         while True:
@@ -303,13 +302,13 @@ def find_macs():
     return macs
 
 
-def _open(hset, instance_id):
+def _open(hset: int, instance_id: str) -> SP_DEVINFO_DATA:
     dev = SP_DEVINFO_DATA(cbSize=ctypes.sizeof(SP_DEVINFO_DATA))
     _check(_OpenDeviceInfo(hset, instance_id, None, 0, ctypes.byref(dev)), f"find device {instance_id}")
     return dev
 
 
-def _read_multi_sz(key, name):
+def _read_multi_sz(key: int, name: str) -> list[str]:
     kind, size = wt.DWORD(), wt.DWORD()
     if _RegQueryValueEx(key, name, None, ctypes.byref(kind), None, ctypes.byref(size)) or kind.value != REG_MULTI_SZ:
         return []
@@ -319,7 +318,7 @@ def _read_multi_sz(key, name):
     return [part for part in buf.raw[: size.value].decode("utf-16-le").split("\0") if part]
 
 
-def _register_interface_guid(hset, dev):
+def _register_interface_guid(hset: int, dev: SP_DEVINFO_DATA) -> None:
     key = _OpenDevRegKey(hset, ctypes.byref(dev), DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_QUERY_VALUE | KEY_SET_VALUE)
     if not key or key == INVALID_HANDLE_VALUE:
         raise _error("open the device's settings")
@@ -327,7 +326,7 @@ def _register_interface_guid(hset, dev):
         guids = _read_multi_sz(key, "DeviceInterfaceGUIDs")
         if INTERFACE_GUID.lower() in (guid.lower() for guid in guids):
             return
-        data = ("\0".join(guids + [INTERFACE_GUID]) + "\0\0").encode("utf-16-le")
+        data = ("\0".join([*guids, INTERFACE_GUID]) + "\0\0").encode("utf-16-le")
         status = _RegSetValueEx(key, "DeviceInterfaceGUIDs", 0, REG_MULTI_SZ, data, len(data))
         if status:
             raise _error("save the device's interface GUID", status)
@@ -335,7 +334,7 @@ def _register_interface_guid(hset, dev):
         _RegCloseKey(key)
 
 
-def _winusb_driver(hset, dev=None):
+def _winusb_driver(hset: int, dev: SP_DEVINFO_DATA | None = None) -> SP_DRVINFO_DATA_V2_W:
     """Find the 'WinUsb Device' driver in Windows' own winusb.inf, for a device (or for the whole set's class)."""
     target = ctypes.byref(dev) if dev is not None else None
     params = SP_DEVINSTALL_PARAMS_W(cbSize=ctypes.sizeof(SP_DEVINSTALL_PARAMS_W))
@@ -355,27 +354,28 @@ def _winusb_driver(hset, dev=None):
         index += 1
 
 
-def winusb_available():
+def winusb_available() -> bool:
     """Read-only check that this Windows has Microsoft's WinUSB driver to offer (what install_winusb uses)."""
     class_guid = GUID.parse(GUID_DEVCLASS_USBDEVICE)
     hset = _CreateList(ctypes.byref(class_guid), None)
     if not hset or hset == INVALID_HANDLE_VALUE:
         raise _error("prepare a driver search")
     try:
-        return _winusb_driver(hset).Description == "WinUsb Device"
+        return bool(_winusb_driver(hset).Description == "WinUsb Device")
     finally:
         _DestroyList(hset)
 
 
-def _class_of(instance_id):
+def _class_of(instance_id: str) -> str:
     hset = _CreateList(None, None)
     try:
-        return "{%s}" % str(uuid.UUID(bytes_le=bytes(_open(hset, instance_id).ClassGuid))).upper()
+        guid = uuid.UUID(bytes_le=bytes(_open(hset, instance_id).ClassGuid))
+        return "{" + str(guid).upper() + "}"
     finally:
         _DestroyList(hset)
 
 
-def _set_class(instance_id, class_guid):
+def _set_class(instance_id: str, class_guid: str) -> None:
     hset = _CreateList(None, None)
     try:
         dev = _open(hset, instance_id)
@@ -385,7 +385,7 @@ def _set_class(instance_id, class_guid):
         _DestroyList(hset)
 
 
-def install_winusb(instance_id):
+def install_winusb(instance_id: str) -> bool:
     """Give one Mac Microsoft's WinUSB driver. Needs administrator rights. Returns True if Windows wants a restart.
 
     winusb.inf only offers its driver to devices of its own class, so the device moves to that class first (and back
@@ -419,14 +419,12 @@ def install_winusb(instance_id):
             _DestroyList(hset)
     except Exception:
         if moved:
-            try:
+            with contextlib.suppress(OSError):
                 _set_class(instance_id, original_class)
-            except OSError:
-                pass
         raise
 
 
-def uninstall_device(instance_id):
+def uninstall_device(instance_id: str) -> bool:
     """Remove the device's driver setup (like Device Manager's Uninstall device). Returns True if a restart is due."""
     hset = _CreateList(None, None)
     try:
@@ -438,22 +436,24 @@ def uninstall_device(instance_id):
         _DestroyList(hset)
 
 
-def _read_inf(path):
+def _read_inf(path: str) -> str:
     with open(path, "rb") as f:
         data = f.read()
     return data.decode("utf-16") if data[:2] in (b"\xff\xfe", b"\xfe\xff") else data.decode("latin-1")
 
 
-def targets_mac_with_winusb(inf_text):
+def targets_mac_with_winusb(inf_text: str) -> bool:
     """True for a driver package that puts WinUSB on a Mac's whole USB device, as Zadig's does. Zadig writes the ID
     through a string variable (DeviceID = "VID_05AC&PID_1905"), so this matches the pair itself."""
     pids = re.findall(r"VID_05AC&PID_([0-9A-F]{4})(?![0-9A-F])(?!&MI_)", inf_text, re.IGNORECASE)
-    return any(int(pid, 16) in KNOWN_MAC_PIDS for pid in pids) and re.search("winusb", inf_text, re.IGNORECASE)
+    return (
+        any(int(pid, 16) in KNOWN_MAC_PIDS for pid in pids) and re.search("winusb", inf_text, re.IGNORECASE) is not None
+    )
 
 
-def mac_driver_packages():
+def mac_driver_packages() -> list[str]:
     """Driver packages in Windows' driver store that put WinUSB on a Mac (e.g. added by Zadig)."""
-    found = []
+    found: list[str] = []
     for path in sorted(glob.glob(os.path.join(WINDIR, "INF", "oem*.inf"))):
         try:
             if targets_mac_with_winusb(_read_inf(path)):
@@ -463,23 +463,24 @@ def mac_driver_packages():
     return found
 
 
-def delete_driver_package(name):
+def delete_driver_package(name: str) -> None:
     _check(_UninstallOEMInf(name, SUOI_FORCEDELETE, None), f"delete driver package {name}")
 
 
-def is_zadig_mac_certificate(subject):
+def is_zadig_mac_certificate(subject: str) -> bool:
     match = re.search(r"USB\\VID_05AC&PID_([0-9A-F]{4})", subject, re.IGNORECASE)
-    return bool(match) and int(match.group(1), 16) in KNOWN_MAC_PIDS and "libwdi autogenerated" in subject
+    return match is not None and int(match.group(1), 16) in KNOWN_MAC_PIDS and "libwdi autogenerated" in subject
 
 
-def _zadig_certificates(store_name, delete):
+def _zadig_certificates(store_name: str, delete: bool) -> list[str]:
     flags = CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG
     if not delete:
         flags |= CERT_STORE_READONLY_FLAG
     store = _CertOpenStore(ctypes.c_void_p(CERT_STORE_PROV_SYSTEM_W), 0, None, flags, ctypes.c_wchar_p(store_name))
     if not store:
         raise _error(f"open the {store_name} certificate store")
-    matched, context = [], None
+    matched: list[str] = []
+    context: int | None = None
     try:
         while True:
             context = _CertFind(
@@ -500,7 +501,7 @@ def _zadig_certificates(store_name, delete):
     return matched
 
 
-def zadig_certificates():
+def zadig_certificates() -> list[tuple[str, str]]:
     """Zadig's self-made certificates for a Mac, as [(store, subject)]."""
     return [
         (store, subject)
@@ -509,7 +510,7 @@ def zadig_certificates():
     ]
 
 
-def rescan():
+def rescan() -> None:
     """Ask Windows to look for devices again (so a plugged-in Mac gets its standard driver back right away)."""
     root = wt.DWORD()
     if _LocateDevNode(ctypes.byref(root), None, 0) == CR_SUCCESS:
@@ -518,22 +519,22 @@ def rescan():
 
 @dataclass
 class Leftovers:
-    devices: list  # MacDevice using WinUSB (set up by this app or Zadig)
-    packages: list  # driver packages for a Mac, e.g. Zadig's
-    certificates: list  # (store, subject) of Zadig's certificates for a Mac
+    devices: list[MacDevice]  # using WinUSB (set up by this app or Zadig)
+    packages: list[str]  # driver packages for a Mac, e.g. Zadig's
+    certificates: list[tuple[str, str]]  # (store, subject) of Zadig's certificates for a Mac
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.devices or self.packages or self.certificates)
 
 
-def leftovers():
+def leftovers() -> Leftovers:
     """What remove_all() would undo on this PC."""
     return Leftovers([mac for mac in find_macs() if mac.ready], mac_driver_packages(), zadig_certificates())
 
 
-def remove_all():
+def remove_all() -> list[str]:
     """Undo the Mac's driver setup (this app's and Zadig's). Needs administrator rights. Returns what was done."""
-    done = []
+    done: list[str] = []
     for name in mac_driver_packages():  # first, so Windows can't pick Zadig's package again below
         delete_driver_package(name)
         done.append(f"deleted the driver package {name}")
@@ -542,7 +543,8 @@ def remove_all():
             uninstall_device(mac.instance_id)
             done.append(f"gave the Mac's USB device back to Windows' standard driver ({mac.instance_id})")
     for store in ("Root", "TrustedPublisher"):
-        for subject in _zadig_certificates(store, delete=True):
-            done.append(f"deleted the certificate '{subject}' from {store}")
+        done.extend(
+            f"deleted the certificate '{subject}' from {store}" for subject in _zadig_certificates(store, delete=True)
+        )
     rescan()
     return done

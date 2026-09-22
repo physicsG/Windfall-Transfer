@@ -8,6 +8,7 @@ import struct
 import sys
 import threading
 import time
+from collections.abc import Callable
 
 from windfall import packets as pk
 from windfall.ncm import NcmFunction, find_functions
@@ -21,35 +22,35 @@ PING_ID = 0xC0DE
 class Probe:
     """Talks to the Mac over one NCM function and records what happens."""
 
-    def __init__(self, fn, index, log):
+    def __init__(self, fn: NcmFunction, index: int, log: Callable[[str], None]) -> None:
         self.fn = fn
         self.log = log
         self.our_mac = fn.host_mac or bytes([0x02, 0x00, 0x5E, 0xC0, 0xDE, index])
         self.our_ll = pk.link_local(self.our_mac)
         self.our_v4 = bytes([169, 254, 77, 10 + index])
-        self.peer_mac = None
-        self.peer_ll = None
-        self.peer_v4 = []
+        self.peer_mac: bytes | None = None
+        self.peer_ll: bytes | None = None
+        self.peer_v4: list[bytes] = []
         self.rx = self.tx = 0
-        self.kinds = collections.Counter()
-        self.ping6 = set()
-        self.ping4 = set()
+        self.kinds: collections.Counter[str] = collections.Counter()
+        self.ping6: set[str] = set()
+        self.ping4: set[str] = set()
         self.pinged_by_mac = 0
-        self.dhcp = collections.Counter()
-        self.tcp = {}
+        self.dhcp: collections.Counter[str] = collections.Counter()
+        self.tcp: dict[int, str] = {}
         self.tcp_attempts = 0
         self.tcp_seq = random.randrange(1 << 32)
-        self.errors = collections.Counter()
+        self.errors: collections.Counter[str] = collections.Counter()
 
     @property
-    def tag(self):
+    def tag(self) -> str:
         return f"[{self.fn.name}]"
 
-    def send(self, frame):
+    def send(self, frame: bytes) -> None:
         self.fn.send([frame])
         self.tx += 1
 
-    def handle(self, frame):
+    def handle(self, frame: bytes) -> None:
         self.rx += 1
         info = pk.inspect(frame)
         self.kinds[info["text"]] += 1
@@ -68,7 +69,7 @@ class Probe:
         elif info["type"] == "ipv4":
             self._handle_ipv4(info)
 
-    def _handle_ipv6(self, info):
+    def _handle_ipv6(self, info: pk.FrameInfo) -> None:
         src, dst, proto = info["src"], info["dst"], info["proto"]
         if src[:2] == b"\xfe\x80" and src != self.our_ll and self.peer_ll is None:
             self.peer_ll = src
@@ -108,18 +109,18 @@ class Probe:
         elif proto == pk.PROTO_UDP and info.get("dport") == 547:
             self.dhcp["DHCPv6"] += 1
 
-    def _note_v4(self, addr):
+    def _note_v4(self, addr: bytes) -> None:
         if any(addr) and addr != self.our_v4 and addr not in self.peer_v4:
             self.peer_v4.append(addr)
             self.log(f"{self.tag} Mac's IPv4 address: {pk.ip_str(addr)}")
 
-    def _handle_arp(self, info):
+    def _handle_arp(self, info: pk.FrameInfo) -> None:
         spa = info["arp_spa"]
         self._note_v4(spa)
         if info["arp_op"] == 1 and info["arp_tpa"] == self.our_v4 and any(spa):
             self.send(pk.arp(2, self.our_mac, self.our_v4, info["arp_sha"], spa, dst_mac=info["src_mac"]))
 
-    def _handle_ipv4(self, info):
+    def _handle_ipv4(self, info: pk.FrameInfo) -> None:
         src, dst = info["src"], info["dst"]
         self._note_v4(src)
         if info.get("dhcp"):
@@ -135,7 +136,7 @@ class Probe:
                     pk.echo4(self.our_mac, self.our_v4, info["src_mac"], src, ident, seq, reply=True, data=body[4:])
                 )
 
-    def tick(self, n):
+    def tick(self, n: int) -> None:
         # All-nodes ping: the Mac answers from its link-local address even before we know it.
         self.send(pk.echo6(self.our_mac, self.our_ll, pk.ipv6_multicast_mac(pk.ALL_NODES), pk.ALL_NODES, PING_ID, n))
         if self.peer_ll and self.peer_mac:
@@ -161,7 +162,7 @@ class Probe:
             for addr in self.peer_v4:
                 self.send(pk.echo4(self.our_mac, self.our_v4, self.peer_mac, addr, PING_ID, n))
 
-    def summary(self, out):
+    def summary(self, out: Callable[[str], None]) -> None:
         fn, p = self.fn, self.fn.params
         out(f"\n=== Function {fn.name} (USB interfaces {fn.control.number}+{fn.data.number}) ===")
         out(
@@ -197,11 +198,11 @@ class Probe:
         for err, count in self.errors.items():
             out(f"  error x{count}: {err}")
 
-    def works(self):
+    def works(self) -> bool:
         return bool(self.ping6 or self.ping4 or any(v.startswith("OPEN") for v in self.tcp.values()))
 
 
-def receive_loop(probe, stop, log):
+def receive_loop(probe: Probe, stop: threading.Event, log: Callable[[str], None]) -> None:
     while not stop.is_set():
         try:
             frames = probe.fn.receive()
@@ -221,7 +222,7 @@ def receive_loop(probe, stop, log):
                 probe.errors[f"handler: {e!r}"] += 1
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Probe the Mac's USB network link.")
     parser.add_argument("--seconds", type=float, default=40, help="how long to keep the link up (default 40)")
     args = parser.parse_args()
@@ -229,7 +230,7 @@ def main():
     start = time.monotonic()
     print_lock = threading.Lock()
 
-    def log(message):
+    def log(message: str) -> None:
         with print_lock:
             print(f"{time.monotonic() - start:6.1f}s  {message}", flush=True)
 
@@ -240,7 +241,8 @@ def main():
         print("Click 'Set up this PC' in Windfall Transfer first, then close it: only one program can use the device.")
         return 1
 
-    functions, probes = [], []
+    functions: list[NcmFunction] = []
+    probes: list[Probe] = []
     try:
         log(f"opened {device.path}")
         for number, itf in sorted(device.interfaces.items()):

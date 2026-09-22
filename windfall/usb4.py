@@ -6,6 +6,8 @@ import logging
 import re
 import threading
 import time
+from collections.abc import Iterable
+from typing import Protocol
 
 from . import mdns, netinfo
 
@@ -14,7 +16,17 @@ log = logging.getLogger("bridge")
 ADAPTER = re.compile(r"USB4.*P2P|Thunderbolt.*Network", re.IGNORECASE)
 
 
-def speed_text(bits_per_second):
+class Network(Protocol):
+    def interfaces(self) -> list[netinfo.Interface]: ...
+    def ipv4_addresses(self, index: int | None = None) -> list[tuple[str, int, int]]: ...
+    def neighbors(self, index: int) -> list[str]: ...
+
+
+class Discover(Protocol):
+    def __call__(self, local_ip: str, *, exclude: Iterable[str]) -> dict[str, str | None]: ...
+
+
+def speed_text(bits_per_second: float) -> str:
     if bits_per_second >= 1e9:
         return f"{bits_per_second / 1e9:g} Gbps"
     return f"{bits_per_second / 1e6:g} Mbps"
@@ -25,43 +37,49 @@ class Usb4Monitor:
     SEARCH_EVERY = 5.0  # seconds between attempts while looking for the Mac
     RECHECK_EVERY = 60.0  # re-confirm the Mac's address this often once found
 
-    def __init__(self, manual_mac_ip="", net=netinfo, discover=mdns.discover, poll_seconds=2.0):
+    def __init__(
+        self,
+        manual_mac_ip: str = "",
+        net: Network = netinfo,
+        discover: Discover = mdns.discover,
+        poll_seconds: float = 2.0,
+    ) -> None:
         self.manual_mac_ip = (manual_mac_ip or "").strip()
         self.net = net
         self.discover = discover
         self.poll_seconds = poll_seconds
         self.state = self.ABSENT
-        self.adapter = None
-        self.local_ip = None
-        self.mac_ip = None
-        self.mac_name = None
+        self.adapter: netinfo.Interface | None = None
+        self.local_ip: str | None = None
+        self.mac_ip: str | None = None
+        self.mac_name: str | None = None
         self.link_speed = 0
         self.rates = (0.0, 0.0)  # MB/s to the Mac, to this PC
-        self._last_search = None  # None: search on the next check
-        self._last_counters = None
+        self._last_search: float | None = None  # None: search on the next check
+        self._last_counters: tuple[float, int, int] | None = None
         self._quit = threading.Event()
-        self._thread = None
+        self._thread: threading.Thread | None = None
 
-    def start(self):
+    def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._quit.clear()
         self._thread = threading.Thread(target=self._run, name="usb4", daemon=True)
         self._thread.start()
 
-    def stop(self, timeout=5):
+    def stop(self, timeout: float = 5) -> None:
         self._quit.set()
         if self._thread:
             self._thread.join(timeout)
 
-    def set_manual_address(self, ip):
+    def set_manual_address(self, ip: str) -> None:
         """Use this address for the Mac instead of looking for it (empty: look for it again)."""
         self.manual_mac_ip = (ip or "").strip()
         self._last_search = None
         if self.state == self.FOUND:
             self.state = self.SEARCHING  # decided again on the next check
 
-    def _run(self):
+    def _run(self) -> None:
         while not self._quit.is_set():
             try:
                 self.check()
@@ -69,7 +87,7 @@ class Usb4Monitor:
                 log.exception("checking for a Thunderbolt/USB4 link failed")
             self._quit.wait(self.poll_seconds)
 
-    def check(self, now=None):
+    def check(self, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         adapter = next((i for i in self.net.interfaces() if ADAPTER.search(i.description)), None)
         if adapter is None or not adapter.connected:
@@ -88,21 +106,21 @@ class Usb4Monitor:
             self._last_search = now
             self._search(adapter)
 
-    def _lost(self, state, adapter):
+    def _lost(self, state: str, adapter: netinfo.Interface | None) -> None:
         if self.state in (self.SEARCHING, self.FOUND):
             log.info("Thunderbolt/USB4 link is down")
         self.state, self.adapter = state, adapter
         self.mac_ip = self.mac_name = self.local_ip = None
         self.link_speed, self.rates, self._last_counters = 0, (0.0, 0.0), None
 
-    def _measure(self, adapter, now):
+    def _measure(self, adapter: netinfo.Interface, now: float) -> None:
         counters = (now, adapter.out_octets, adapter.in_octets)
         previous, self._last_counters = self._last_counters, counters
         if previous and now > previous[0]:
             seconds = now - previous[0]
             self.rates = ((counters[1] - previous[1]) / seconds / 1e6, (counters[2] - previous[2]) / seconds / 1e6)
 
-    def _search(self, adapter):
+    def _search(self, adapter: netinfo.Interface) -> None:
         ip, name = self._find_mac(adapter)
         if ip is None:
             if self.state != self.FOUND:  # once found, one missed re-check doesn't mean the Mac moved
@@ -115,7 +133,7 @@ class Usb4Monitor:
         self.mac_ip, self.state = ip, self.FOUND
         self.mac_name = name or self.mac_name
 
-    def _find_mac(self, adapter):
+    def _find_mac(self, adapter: netinfo.Interface) -> tuple[str | None, str | None]:
         if self.manual_mac_ip:
             return self.manual_mac_ip, None
         if self.local_ip:
@@ -126,7 +144,7 @@ class Usb4Monitor:
                 log.debug("Bonjour query on the Thunderbolt/USB4 link failed: %s", e)
                 answers = {}
             if answers:
-                ip = self.mac_ip if self.mac_ip in answers else sorted(answers)[0]
+                ip = self.mac_ip if self.mac_ip in answers else min(answers)
                 return ip, answers[ip]
         seen = [ip for ip in self.net.neighbors(adapter.index) if ip != self.local_ip]
         if seen:

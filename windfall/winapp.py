@@ -1,11 +1,13 @@
 """Small Windows helpers for the app: elevation, single instance, DPI awareness, message boxes."""
 
+import contextlib
 import ctypes
 import ctypes.wintypes as wt
 import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 
 ERROR_ALREADY_EXISTS = 183
 
@@ -20,14 +22,14 @@ _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _user32.MessageBoxW.argtypes = [wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT]
 
 
-def is_admin():
+def is_admin() -> bool:
     try:
         return bool(_shell32.IsUserAnAdmin())
     except OSError:
         return False
 
 
-def relaunch_as_admin(script, args=(), console=True):
+def relaunch_as_admin(script: str, args: Sequence[str] = (), console: bool = True) -> bool:
     """Start `script` again with administrator rights, in a console that stays open or else with pythonw.exe.
     False if that was refused."""
     exe = sys.executable
@@ -37,13 +39,13 @@ def relaunch_as_admin(script, args=(), console=True):
     else:
         pythonw = os.path.join(os.path.dirname(exe), "pythonw.exe")
         program, params = (pythonw if os.path.exists(pythonw) else exe), subprocess.list2cmdline([script, *args])
-    result = _shell32.ShellExecuteW(None, "runas", program, params, os.path.dirname(script), 1)
+    result: int | None = _shell32.ShellExecuteW(None, "runas", program, params, os.path.dirname(script), 1)
     return (result or 0) > 32
 
 
-def single_instance(name="Local\\WindfallTransfer"):
+def single_instance(name: str = "Local\\WindfallTransfer") -> int | None:
     """A mutex handle if no other bridge is running in this session, else None. Hold it while running."""
-    handle = _kernel32.CreateMutexW(None, False, name)
+    handle: int | None = _kernel32.CreateMutexW(None, False, name)
     if not handle:
         return None  # typically access denied: another (elevated) instance owns it
     if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
@@ -52,31 +54,29 @@ def single_instance(name="Local\\WindfallTransfer"):
     return handle
 
 
-def enable_dpi_awareness():
+def enable_dpi_awareness() -> None:
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # system DPI aware: crisp text at 150% scaling etc.
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # system DPI aware: crisp text when scaled
     except (AttributeError, OSError):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             _user32.SetProcessDPIAware()
-        except (AttributeError, OSError):
-            pass
 
 
-def unpacked_folder():
+def unpacked_folder() -> str | None:
     """Program Files\\Windfall Transfer, if this copy was unpacked there by the single-file Windfall Transfer.exe."""
     folder = os.environ.get("WINDFALL_UNPACKED")  # set by the launcher
     if not folder:
         return None
     home = os.path.dirname(os.path.normpath(folder))
-    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
+    program_files = os.environ.get("PROGRAMW6432") or os.environ.get("PROGRAMFILES") or r"C:\Program Files"
     expected = os.path.join(program_files, "Windfall Transfer")
     # "Remove from this PC" deletes this folder, so accept nothing else.
     return home if os.path.normcase(home) == os.path.normcase(expected) else None
 
 
-def legacy_unpacked_folder():
+def legacy_unpacked_folder() -> str | None:
     """Program Files\\Connect App, if the app's earlier Connect App.exe unpacked itself there (and nothing else is)."""
-    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
+    program_files = os.environ.get("PROGRAMW6432") or os.environ.get("PROGRAMFILES") or r"C:\Program Files"
     folder = os.path.join(program_files, "Connect App")
     try:
         entries = os.listdir(folder)
@@ -86,7 +86,7 @@ def legacy_unpacked_folder():
     return folder if entries and all(ours.fullmatch(entry) for entry in entries) else None
 
 
-def delete_after_exit(folder, seconds=5):
+def delete_after_exit(folder: str, seconds: int = 5) -> None:
     """Delete a folder shortly after this process exits (its own files stay in use until then)."""
     subprocess.Popen(
         f'cmd.exe /d /c ping -n {seconds + 1} 127.0.0.1 >nul & rmdir /s /q "{folder}"',
@@ -95,12 +95,10 @@ def delete_after_exit(folder, seconds=5):
     )
 
 
-def set_app_id(app_id):
-    try:
+def set_app_id(app_id: str) -> None:
+    with contextlib.suppress(AttributeError, OSError):
         _shell32.SetCurrentProcessExplicitAppUserModelID(ctypes.c_wchar_p(app_id))
-    except (AttributeError, OSError):
-        pass
 
 
-def message_box(text, title="Windfall Transfer", error=False):
+def message_box(text: str, title: str = "Windfall Transfer", error: bool = False) -> None:
     _user32.MessageBoxW(None, text, title, 0x10 if error else 0x40)  # MB_ICONERROR / MB_ICONINFORMATION

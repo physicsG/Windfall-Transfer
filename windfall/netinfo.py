@@ -3,6 +3,7 @@
 import ctypes
 import ctypes.wintypes as wt
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from .wintun import MIB_UNICASTIPADDRESS_ROW, SOCKADDR_INET
@@ -100,25 +101,28 @@ class Interface:
     mtu: int
 
 
-def _rows(getter, row_type, *args):
+def _rows[T: ctypes.Structure](getter: Callable[..., int], row_type: type[T], *args: int) -> list[T]:
     """Call a GetXxxTable2-style function and return its rows (copied), freeing the table."""
     table = ctypes.c_void_p()
     err = getter(*args, ctypes.byref(table))
     if err:
         raise OSError(err, f"{getter.__name__}: {ctypes.FormatError(err).strip()} (error {err})")
+    address = table.value
+    if address is None:
+        return []
     try:
-        count = ctypes.c_ulong.from_address(table.value).value
-        rows = (row_type * count).from_address(table.value + 8)  # NumEntries, padded to the rows' alignment
+        count = ctypes.c_ulong.from_address(address).value
+        rows = (row_type * count).from_address(address + 8)  # NumEntries, padded to the rows' alignment
         return [row_type.from_buffer_copy(row) for row in rows]
     finally:
         _iphlpapi.FreeMibTable(table)
 
 
-def _ipv4(sockaddr):
+def _ipv4(sockaddr: SOCKADDR_INET) -> str:
     return socket.inet_ntoa(bytes(sockaddr.data[2:6]))  # sockaddr_in: family, port, address
 
 
-def interfaces():
+def interfaces() -> list[Interface]:
     """Network interfaces, without the per-driver filter layers Windows also lists as interfaces."""
     return [
         Interface(
@@ -133,11 +137,11 @@ def interfaces():
             mtu=row.Mtu,
         )
         for row in _rows(_iphlpapi.GetIfTable2, MIB_IF_ROW2)
-        if not row.InterfaceAndOperStatusFlags & 0x02
-    ]  # FilterInterface
+        if not row.InterfaceAndOperStatusFlags & 0x02  # FilterInterface
+    ]
 
 
-def ipv4_addresses(index=None):
+def ipv4_addresses(index: int | None = None) -> list[tuple[str, int, int]]:
     """This PC's IPv4 addresses as [(ip, prefix_length, interface_index)], optionally for one interface."""
     return [
         (_ipv4(row.Address), row.OnLinkPrefixLength, row.InterfaceIndex)
@@ -146,9 +150,9 @@ def ipv4_addresses(index=None):
     ]
 
 
-def neighbors(index):
+def neighbors(index: int) -> list[str]:
     """IPv4 neighbors this PC has resolved on one interface (unicast only), as a list of IPs."""
-    found = []
+    found: list[str] = []
     for row in _rows(_iphlpapi.GetIpNetTable2, MIB_IPNET_ROW2, AF_INET):
         mac = bytes(row.PhysicalAddress[: row.PhysicalAddressLength])
         if (

@@ -12,7 +12,7 @@ from windfall.service import LOG_FILE, BridgeService
 log = logging.getLogger("bridge")
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Network bridge to a Mac over a USB-C cable.")
     parser.add_argument("--windows-ip", default="10.77.0.1", help="this PC's address on the link")
     parser.add_argument("--mac-ip", default="10.77.0.2", help="address handed to the Mac")

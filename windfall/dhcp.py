@@ -7,8 +7,9 @@ DISCOVER, OFFER, REQUEST, DECLINE, ACK, NAK, RELEASE, INFORM = range(1, 9)
 _NAMES = {OFFER: "OFFER", ACK: "ACK", NAK: "NAK"}
 
 
-def parse_options(data):
-    options, i = {}, 0
+def parse_options(data: bytes) -> dict[int, bytes]:
+    options: dict[int, bytes] = {}
+    i = 0
     while i < len(data):
         code = data[i]
         if code == 255:
@@ -25,13 +26,13 @@ def parse_options(data):
 
 
 class DhcpServer:
-    def __init__(self, server_ip, client_ip, netmask, lease_seconds=86400):
+    def __init__(self, server_ip: bytes, client_ip: bytes, netmask: bytes, lease_seconds: int = 86400) -> None:
         self.server_ip = bytes(server_ip)
         self.client_ip = bytes(client_ip)
         self.netmask = bytes(netmask)
         self.lease = lease_seconds
 
-    def handle(self, bootp):
+    def handle(self, bootp: bytes) -> tuple[bytes, str] | None:
         """Answer one client message. Returns (reply BOOTP payload, 'OFFER'|'ACK'|'NAK'), or None to stay silent."""
         if len(bootp) < 240 or bootp[0] != 1 or bytes(bootp[236:240]) != MAGIC:
             return None
@@ -48,7 +49,7 @@ class DhcpServer:
             return self._reply(bootp, reply), _NAMES[reply]
         return None
 
-    def _reply(self, request, kind):
+    def _reply(self, request: bytes, kind: int) -> bytes:
         xid, flags, chaddr = bytes(request[4:8]), bytes(request[10:12]), bytes(request[28:44])
         nak = kind == NAK
         header = struct.pack(

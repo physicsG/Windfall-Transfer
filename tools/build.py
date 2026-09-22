@@ -70,15 +70,17 @@ TCL_FOLDERS = ["tcl8.6", "tk8.6", "tcl8"]
 TCL_SKIP = shutil.ignore_patterns("demos", "tzdata")
 
 
-def find_modules():
+def find_modules() -> tuple[dict[Path, Path], set[Path]]:
     """Standard-library sources and extension modules the app needs (plus whole packages in WHOLE_PACKAGES)."""
     finder = modulefinder.ModuleFinder(path=[str(ROOT), str(STDLIB), str(DLLS)], excludes=EXCLUDES)
     finder.run_script(str(ENTRY))
-    sources, extensions = {}, set()
+    sources: dict[Path, Path] = {}
+    extensions: set[Path] = set()
     for module in finder.modules.values():
-        path = Path(module.__file__) if module.__file__ else None
-        if path is None:
+        file = getattr(module, "__file__", None)  # not in typeshed's stub
+        if not file:
             continue  # built into the Python DLL
+        path = Path(file)
         if path.suffix == ".pyd":
             extensions.add(path)
         elif path.is_relative_to(STDLIB):
@@ -91,13 +93,13 @@ def find_modules():
     return sources, extensions
 
 
-def _add(archive, name, data):
+def _add(archive: zipfile.ZipFile, name: str, data: bytes) -> None:
     info = zipfile.ZipInfo(name, date_time=FIXED_TIME)
     info.compress_type = zipfile.ZIP_DEFLATED
     archive.writestr(info, data, compresslevel=9)
 
 
-def write_stdlib_zip(sources):
+def write_stdlib_zip(sources: dict[Path, Path]) -> None:
     with tempfile.TemporaryDirectory() as tmp, zipfile.ZipFile(RUNTIME / f"{TAG}.zip", "w") as archive:
         for relative, path in sorted(sources.items()):
             compiled = Path(tmp) / "module.pyc"
@@ -105,7 +107,7 @@ def write_stdlib_zip(sources):
             _add(archive, relative.with_suffix(".pyc").as_posix(), compiled.read_bytes())
 
 
-def copy_runtime(extensions):
+def copy_runtime(extensions: set[Path]) -> None:
     for name in RUNTIME_FILES:
         shutil.copy2(BASE / name, RUNTIME / name)
     shutil.copy2(BASE / "LICENSE.txt", RUNTIME / "LICENSE.txt")
@@ -121,7 +123,7 @@ def copy_runtime(extensions):
     (RUNTIME / f"{TAG}._pth").write_text(f"{TAG}.zip\n.\n..\\app\n", encoding="utf-8")
 
 
-def copy_app():
+def copy_app() -> None:
     shutil.copytree(ROOT / "windfall", APP / "windfall", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(ROOT / "vendor", APP / "vendor")
     shutil.copy2(ENTRY, APP / ENTRY.name)
@@ -130,16 +132,25 @@ def copy_app():
 # ---- icon: two arrows (Mac <-> PC) on a rounded blue square ----
 
 
-def _draw(size):
+def _draw(size: int) -> list[bytes]:
     """RGBA rows of the icon at one size, 4x4 supersampled."""
     blue, white, samples = (37, 99, 235), (255, 255, 255), 4
 
-    def in_square(u, v, margin=0.03, radius=0.22):
+    def in_square(u: float, v: float, margin: float = 0.03, radius: float = 0.22) -> bool:
         x = min(max(u, margin + radius), 1 - margin - radius)
         y = min(max(v, margin + radius), 1 - margin - radius)
         return (u - x) ** 2 + (v - y) ** 2 <= radius**2
 
-    def in_arrow(u, v, y0, tail, tip, head=0.19, half_head=0.13, half_shaft=0.05):
+    def in_arrow(
+        u: float,
+        v: float,
+        y0: float,
+        tail: float,
+        tip: float,
+        head: float = 0.19,
+        half_head: float = 0.13,
+        half_shaft: float = 0.05,
+    ) -> bool:
         direction = 1 if tip > tail else -1
         base = tip - direction * head
         if min(tail, base) <= u <= max(tail, base) and abs(v - y0) <= half_shaft:
@@ -147,7 +158,7 @@ def _draw(size):
         t = (u - base) * direction
         return 0 <= t <= head and abs(v - y0) <= half_head * (1 - t / head)
 
-    rows = []
+    rows: list[bytes] = []
     for y in range(size):
         row = bytearray()
         for x in range(size):
@@ -159,14 +170,14 @@ def _draw(size):
                         background += 1
                         foreground += in_arrow(u, v, 0.37, 0.20, 0.80) or in_arrow(u, v, 0.63, 0.80, 0.20)
             mix = foreground / background if background else 0
-            row += bytes([round(b + (w - b) * mix) for b, w in zip(blue, white)])
+            row += bytes([round(b + (w - b) * mix) for b, w in zip(blue, white, strict=True)])
             row.append(round(255 * background / samples**2))
         rows.append(bytes(row))
     return rows
 
 
-def _png(size, rows):
-    def chunk(kind, data):
+def _png(size: int, rows: list[bytes]) -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
     return (
@@ -177,7 +188,7 @@ def _png(size, rows):
     )
 
 
-def _dib(size, rows):
+def _dib(size: int, rows: list[bytes]) -> bytes:
     header = struct.pack("<IiiHHIIiiII", 40, size, size * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     pixels = b"".join(
         bytes(
@@ -188,17 +199,19 @@ def _dib(size, rows):
     return header + pixels + bytes(((size + 31) // 32) * 4 * size)  # AND mask unused: alpha decides
 
 
-def write_icon(path, sizes=(16, 20, 24, 32, 40, 48, 64, 256)):
+def write_icon(path: Path, sizes: tuple[int, ...] = (16, 20, 24, 32, 40, 48, 64, 256)) -> None:
     images = [(_png if size >= 256 else _dib)(size, _draw(size)) for size in sizes]
     offset = 6 + 16 * len(images)
     entries = b""
-    for size, data in zip(sizes, images):
+    for size, data in zip(sizes, images, strict=True):
         entries += struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 32, len(data), offset)
         offset += len(data)
     path.write_bytes(struct.pack("<HHH", 0, 1, len(images)) + entries + b"".join(images))
 
 
-def compile_launcher(out, icon, manifest, payload=None, payload_id=None):
+def compile_launcher(
+    out: Path, icon: Path, manifest: Path, payload: Path | None = None, payload_id: str | None = None
+) -> None:
     """The folder launcher, or with a payload the single-file one (ONEFILE: the payload is embedded)."""
     if not CSC.exists():
         raise SystemExit(f"C# compiler not found at {CSC} (part of Windows' .NET Framework 4)")
@@ -227,7 +240,7 @@ def compile_launcher(out, icon, manifest, payload=None, payload_id=None):
     subprocess.run(command + sources, check=True)
 
 
-def smoke_test(folder, label):
+def smoke_test(folder: Path, label: str) -> None:
     """Import the app with a bundled runtime only (no window), to catch anything missing from the build."""
     code = (
         "import tkinter, windfall.gui, windfall.driver, windfall.usb4, windfall.service; "
@@ -235,17 +248,22 @@ def smoke_test(folder, label):
     )
     env = {key: value for key, value in os.environ.items() if not key.startswith(("PYTHON", "TCL_", "TK_"))}
     result = subprocess.run(
-        [str(folder / "runtime" / "python.exe"), "-c", code], cwd=folder, env=env, capture_output=True, text=True
+        [str(folder / "runtime" / "python.exe"), "-c", code],
+        cwd=folder,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode:
         raise SystemExit(f"{label}: the bundled runtime couldn't load the app\n{result.stderr.strip()}")
     print(f"{label}: OK ({result.stdout.strip()})")
 
 
-def build_single_exe(icon):
+def build_single_exe(icon: Path) -> str:
     """Embed runtime/ and app/ in one Windfall Transfer.exe, then check it unpacks and runs like on a fresh PC."""
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
+    with tempfile.TemporaryDirectory() as tmp_name:
+        tmp = Path(tmp_name)
         payload = tmp / "payload.zip"
         with zipfile.ZipFile(payload, "w") as archive:
             for folder in (RUNTIME, APP):
@@ -277,7 +295,7 @@ def build_single_exe(icon):
     return payload_id
 
 
-def remove(path):
+def remove(path: Path) -> bool:
     """Delete a file or folder. False if it's in use (for example, Windfall Transfer is running from it)."""
     try:
         if path.is_dir():
@@ -289,7 +307,7 @@ def remove(path):
         return False
 
 
-def main():
+def main() -> None:
     if sys.maxsize <= 2**32 or not (BASE / f"{TAG}.dll").exists():
         raise SystemExit("run this with a 64-bit python.org Python installation")
     if not remove(STAGE):

@@ -4,6 +4,8 @@ import ctypes
 import ctypes.wintypes as wt
 import uuid
 import winreg
+from collections.abc import Callable
+from typing import Any, Self
 
 _setupapi = ctypes.WinDLL("setupapi", use_last_error=True)
 _winusb = ctypes.WinDLL("winusb", use_last_error=True)
@@ -30,7 +32,7 @@ class WinUsbError(OSError):
     pass
 
 
-def _check(ok, what):
+def _check(ok: object, what: str) -> None:
     if not ok:
         err = ctypes.get_last_error()
         raise WinUsbError(err, f"{what}: {ctypes.FormatError(err).strip()} (error {err})")
@@ -40,7 +42,7 @@ class GUID(ctypes.Structure):
     _fields_ = [("Data1", wt.DWORD), ("Data2", wt.WORD), ("Data3", wt.WORD), ("Data4", ctypes.c_ubyte * 8)]
 
     @classmethod
-    def parse(cls, text):
+    def parse(cls, text: str) -> Self:
         u = uuid.UUID(text)
         guid = cls(u.time_low, u.time_mid, u.time_hi_version)
         guid.Data4[:] = list(u.bytes[8:])
@@ -90,8 +92,8 @@ _HANDLE = ctypes.c_void_p
 _ULONG_P = ctypes.POINTER(wt.ULONG)
 
 
-def _proto(dll, name, restype, *argtypes):
-    fn = getattr(dll, name)
+def _proto(dll: ctypes.WinDLL, name: str, restype: Any, *argtypes: Any) -> Callable[..., Any]:
+    fn = dll[name]
     fn.restype = restype
     fn.argtypes = list(argtypes)
     return fn
@@ -170,13 +172,13 @@ _WinUsb_SetPowerPolicy = _proto(_winusb, "WinUsb_SetPowerPolicy", wt.BOOL, _HAND
 _WinUsb_AbortPipe = _proto(_winusb, "WinUsb_AbortPipe", wt.BOOL, _HANDLE, ctypes.c_ubyte)
 
 
-def interface_paths(guid_text):
+def interface_paths(guid_text: str) -> list[str]:
     """Device paths of all present devices exposing the given device interface class."""
     guid = GUID.parse(guid_text)
     hdev = _SetupDiGetClassDevsW(ctypes.byref(guid), None, None, 0x02 | 0x10)  # DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
     if not hdev or hdev == INVALID_HANDLE_VALUE:
         return []
-    paths = []
+    paths: list[str] = []
     try:
         index = 0
         while True:
@@ -196,9 +198,9 @@ def interface_paths(guid_text):
     return paths
 
 
-def _registered_interface_guids(vid, pid):
+def _registered_interface_guids(vid: int, pid: int) -> list[str]:
     """Interface GUIDs a driver installer (e.g. Zadig) registered for this VID/PID."""
-    guids = []
+    guids: list[str] = []
     base = rf"SYSTEM\CurrentControlSet\Enum\USB\VID_{vid:04X}&PID_{pid:04X}"
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as key:
@@ -224,10 +226,10 @@ def _registered_interface_guids(vid, pid):
     return [g for g in guids if g]
 
 
-def find_device_paths(vid, pid):
+def find_device_paths(vid: int, pid: int) -> list[str]:
     needle = f"vid_{vid:04x}&pid_{pid:04x}"
-    paths = []
-    for guid in _registered_interface_guids(vid, pid) + [GUID_DEVINTERFACE_USB_DEVICE]:
+    paths: list[str] = []
+    for guid in [*_registered_interface_guids(vid, pid), GUID_DEVINTERFACE_USB_DEVICE]:
         for path in interface_paths(guid):
             low = path.lower()
             if needle in low and "&mi_" not in low and path not in paths:
@@ -238,30 +240,30 @@ def find_device_paths(vid, pid):
 class Interface:
     """One USB interface of a WinUSB-bound device."""
 
-    def __init__(self, handle, descriptor):
+    def __init__(self, handle: ctypes.c_void_p, descriptor: USB_INTERFACE_DESCRIPTOR) -> None:
         self.handle = handle
-        self.number = descriptor.bInterfaceNumber
-        self.cls = descriptor.bInterfaceClass
-        self.subclass = descriptor.bInterfaceSubClass
-        self.protocol = descriptor.bInterfaceProtocol
+        self.number: int = descriptor.bInterfaceNumber
+        self.cls: int = descriptor.bInterfaceClass
+        self.subclass: int = descriptor.bInterfaceSubClass
+        self.protocol: int = descriptor.bInterfaceProtocol
 
-    def pipes(self, alt):
+    def pipes(self, alt: int) -> list[WINUSB_PIPE_INFORMATION]:
         desc = USB_INTERFACE_DESCRIPTOR()
         _check(
             _WinUsb_QueryInterfaceSettings(self.handle, alt, ctypes.byref(desc)),
             f"query interface {self.number} alt {alt}",
         )
-        pipes = []
+        pipes: list[WINUSB_PIPE_INFORMATION] = []
         for i in range(desc.bNumEndpoints):
             info = WINUSB_PIPE_INFORMATION()
             _check(_WinUsb_QueryPipe(self.handle, alt, i, ctypes.byref(info)), f"query pipe {i}")
             pipes.append(info)
         return pipes
 
-    def set_alt(self, alt):
+    def set_alt(self, alt: int) -> None:
         _check(_WinUsb_SetCurrentAlternateSetting(self.handle, alt), f"select interface {self.number} alt {alt}")
 
-    def control_in(self, request_type, request, value, index, length):
+    def control_in(self, request_type: int, request: int, value: int, index: int, length: int) -> bytes:
         buf = ctypes.create_string_buffer(length)
         done = wt.ULONG()
         setup = WINUSB_SETUP_PACKET(request_type, request, value, index, length)
@@ -271,7 +273,7 @@ class Interface:
         )
         return buf.raw[: done.value]
 
-    def control_out(self, request_type, request, value, index, data=b""):
+    def control_out(self, request_type: int, request: int, value: int, index: int, data: bytes = b"") -> None:
         buf = ctypes.create_string_buffer(data, len(data)) if data else None
         done = wt.ULONG()
         setup = WINUSB_SETUP_PACKET(request_type, request, value, index, len(data))
@@ -280,14 +282,14 @@ class Interface:
             f"control request 0x{request:02x}",
         )
 
-    def set_pipe_policy(self, pipe, policy, value):
+    def set_pipe_policy(self, pipe: int, policy: int, value: int) -> None:
         v = wt.ULONG(value) if policy == PIPE_TRANSFER_TIMEOUT else ctypes.c_ubyte(value)
         _check(
             _WinUsb_SetPipePolicy(self.handle, pipe, policy, ctypes.sizeof(v), ctypes.byref(v)),
             f"set pipe policy {policy} on 0x{pipe:02x}",
         )
 
-    def read_into(self, pipe, buffer):
+    def read_into(self, pipe: int, buffer: bytearray) -> int | None:
         """Read one transfer into a bytearray. Returns the byte count, or None on timeout."""
         view = (ctypes.c_char * len(buffer)).from_buffer(buffer)
         done = wt.ULONG()
@@ -298,23 +300,24 @@ class Interface:
             raise WinUsbError(err, f"read 0x{pipe:02x}: {ctypes.FormatError(err).strip()} (error {err})")
         return done.value
 
-    def write(self, pipe, data):
+    def write(self, pipe: int, data: bytes) -> int:
         done = wt.ULONG()
         _check(_WinUsb_WritePipe(self.handle, pipe, data, len(data), ctypes.byref(done), None), f"write 0x{pipe:02x}")
         return done.value
 
-    def abort(self, pipe):
+    def abort(self, pipe: int) -> None:
         _WinUsb_AbortPipe(self.handle, pipe)
 
 
 class WinUsbDevice:
     """A whole USB device bound to WinUSB, with a handle per interface."""
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         self.path = path
-        self.interfaces = {}
-        self._handles = []
-        self._file = _CreateFileW(path, 0xC0000000, 0x3, None, 3, 0x40000080, None)  # R/W, shared, overlapped
+        self.interfaces: dict[int, Interface] = {}
+        self._handles: list[ctypes.c_void_p] = []
+        # R/W, shared, overlapped
+        self._file: int | None = _CreateFileW(path, 0xC0000000, 0x3, None, 3, 0x40000080, None)
         if not self._file or self._file == INVALID_HANDLE_VALUE:
             err = ctypes.get_last_error()
             raise WinUsbError(err, f"open device: {ctypes.FormatError(err).strip()} (error {err})")
@@ -339,14 +342,14 @@ class WinUsbDevice:
             self.close()
             raise
 
-    def disable_selective_suspend(self):
+    def disable_selective_suspend(self) -> None:
         off = ctypes.c_ubyte(0)
         _check(
             _WinUsb_SetPowerPolicy(self._handles[0], AUTO_SUSPEND, 1, ctypes.byref(off)),
             "disable USB selective suspend",
         )
 
-    def close(self):
+    def close(self) -> None:
         for handle in reversed(self._handles):
             _WinUsb_Free(handle)
         self._handles = []
@@ -355,11 +358,11 @@ class WinUsbDevice:
         self._file = None
 
 
-def open_device(vid, pid):
+def open_device(vid: int, pid: int) -> WinUsbDevice:
     paths = find_device_paths(vid, pid)
     if not paths:
         raise WinUsbError(2, f"no USB device {vid:04x}:{pid:04x} is connected")
-    errors = []
+    errors: list[str] = []
     for path in paths:
         try:
             return WinUsbDevice(path)

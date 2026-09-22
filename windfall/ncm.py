@@ -1,10 +1,12 @@
 """Host side of USB CDC-NCM (Network Control Model): class requests and NTB framing."""
 
+import contextlib
 import struct
 import threading
 from dataclasses import dataclass
+from typing import Self
 
-from .winusb import PIPE_BULK, PIPE_TRANSFER_TIMEOUT, SHORT_PACKET_TERMINATE
+from .winusb import PIPE_BULK, PIPE_TRANSFER_TIMEOUT, SHORT_PACKET_TERMINATE, WinUsbDevice
 
 NTH16 = 0x484D434E  # "NCMH"
 NDP16 = 0x304D434E  # "NCM0" (no CRC)
@@ -40,19 +42,19 @@ class NtbParameters:
     out_max_datagrams: int = 0
 
     @classmethod
-    def parse(cls, data):
+    def parse(cls, data: bytes) -> Self:
         (_, formats, in_max, in_div, in_rem, in_align, _, out_max, out_div, out_rem, out_align, out_max_dg) = (
             struct.unpack_from("<HHIHHHHIHHHH", data)
         )
         return cls(formats, in_max, in_div, in_rem, in_align, out_max, out_div, out_rem, out_align, out_max_dg)
 
 
-def parse_ntb(buf):
+def parse_ntb(buf: bytes | memoryview) -> list[bytes]:
     """Split one received NTB (16- or 32-bit) into Ethernet frames."""
     if len(buf) < 12:
         raise ValueError(f"NTB too short ({len(buf)} bytes)")
     sig = struct.unpack_from("<I", buf)[0]
-    frames = []
+    frames: list[bytes] = []
     if sig == NTH16:
         _, _, block_len, ndp = struct.unpack_from("<HHHH", buf, 4)
         end = min(block_len or len(buf), len(buf))
@@ -98,7 +100,7 @@ def parse_ntb(buf):
     return frames
 
 
-def build_ntb16(frames, sequence, params):
+def build_ntb16(frames: list[bytes], sequence: int, params: NtbParameters) -> bytes:
     """Pack Ethernet frames into one NTB-16, with the NDP right after the header."""
     ndp_align = max(params.out_alignment, 4)
     ndp_off = (12 + ndp_align - 1) // ndp_align * ndp_align
@@ -106,7 +108,7 @@ def build_ntb16(frames, sequence, params):
     divisor = max(params.out_divisor, 1)
     remainder = params.out_remainder % divisor
     offset = ndp_off + ndp_len
-    entries = []
+    entries: list[tuple[int, int]] = []
     for frame in frames:
         offset += (remainder - offset) % divisor
         entries.append((offset, len(frame)))
@@ -114,15 +116,15 @@ def build_ntb16(frames, sequence, params):
     ntb = bytearray(offset)
     struct.pack_into("<IHHHH", ntb, 0, NTH16, 12, sequence & 0xFFFF, offset, ndp_off)
     struct.pack_into("<IHH", ntb, ndp_off, NDP16, ndp_len, 0)
-    for i, ((start, length), frame) in enumerate(zip(entries, frames)):
+    for i, ((start, length), frame) in enumerate(zip(entries, frames, strict=True)):
         struct.pack_into("<HH", ntb, ndp_off + 8 + 4 * i, start, length)
         ntb[start : start + length] = frame
     return bytes(ntb)
 
 
-def find_functions(device):
+def find_functions(device: WinUsbDevice) -> list[tuple[int, int]]:
     """(control, data) interface numbers of each CDC-NCM function on a WinUSB device."""
-    pairs = []
+    pairs: list[tuple[int, int]] = []
     for number, itf in sorted(device.interfaces.items()):
         data = device.interfaces.get(number + 1)
         if itf.cls == 0x02 and itf.subclass == 0x0D and data and data.cls == 0x0A:
@@ -133,23 +135,24 @@ def find_functions(device):
 class NcmFunction:
     """One CDC-NCM function: a control interface plus its data interface."""
 
-    def __init__(self, device, control_number, data_number, name):
+    def __init__(self, device: WinUsbDevice, control_number: int, data_number: int, name: str) -> None:
         self.name = name
         self.control = device.interfaces[control_number]
         self.data = device.interfaces[data_number]
         self.params = NtbParameters()
-        self.host_mac = None
-        self.max_datagram = None
-        self.notes = []
-        self.pipe_in = self.pipe_out = None
-        self._rx = None
+        self.host_mac: bytes | None = None
+        self.max_datagram: int | None = None
+        self.notes: list[str] = []
+        self.pipe_in: int | None = None
+        self.pipe_out: int | None = None
+        self._rx = bytearray()
         self._sequence = 0
         self._tx_lock = threading.Lock()
 
-    def _request_in(self, request, length):
+    def _request_in(self, request: int, length: int) -> bytes:
         return self.control.control_in(CLASS_IN, request, 0, self.control.number, length)
 
-    def start(self, read_timeout_ms=500, write_timeout_ms=0):
+    def start(self, read_timeout_ms: int = 500, write_timeout_ms: int = 0) -> None:
         """Configure the function and bring the link up. A timeout of 0 means wait indefinitely."""
         self.data.set_alt(0)  # resets the function
         try:
@@ -192,25 +195,28 @@ class NcmFunction:
             self.data.set_pipe_policy(self.pipe_in, PIPE_TRANSFER_TIMEOUT, read_timeout_ms)
         self._rx = bytearray((max(self.params.in_max, 2048) + 511) // 512 * 512)
 
-    def abort_receive(self):
+    def abort_receive(self) -> None:
         """Make a pending receive() return (with an error)."""
         if self.pipe_in is not None:
             self.data.abort(self.pipe_in)
 
-    def receive(self):
+    def receive(self) -> list[bytes]:
         """Wait (up to the read timeout, if any) for one NTB; returns its Ethernet frames (maybe none)."""
+        if self.pipe_in is None:
+            raise RuntimeError(f"function {self.name} isn't started")
         count = self.data.read_into(self.pipe_in, self._rx)
         if not count:
             return []
         return parse_ntb(memoryview(self._rx)[:count])
 
-    def send(self, frames):
+    def send(self, frames: list[bytes]) -> None:
         """Send Ethernet frames, packing as many per NTB as the device allows."""
         p = self.params
         max_count = p.out_max_datagrams or 64
         max_size = min(p.out_max, 0xFFFF)
         overhead = 12 + max(p.out_alignment, 4) + 8 + 4  # NTH16, NDP alignment, NDP header, terminator
-        batch, estimate = [], 0
+        batch: list[bytes] = []
+        estimate = 0
         for frame in frames:
             cost = len(frame) + 4 + max(p.out_divisor, 1)  # payload, NDP entry, worst-case padding
             if batch and (len(batch) >= max_count or overhead + estimate + cost > max_size):
@@ -221,14 +227,14 @@ class NcmFunction:
         if batch:
             self._send_ntb(batch)
 
-    def _send_ntb(self, frames):
+    def _send_ntb(self, frames: list[bytes]) -> None:
+        if self.pipe_out is None:
+            raise RuntimeError(f"function {self.name} isn't started")
         with self._tx_lock:
             ntb = build_ntb16(frames, self._sequence, self.params)
             self._sequence += 1
             self.data.write(self.pipe_out, ntb)
 
-    def stop(self):
-        try:
+    def stop(self) -> None:
+        with contextlib.suppress(OSError):
             self.data.set_alt(0)
-        except OSError:
-            pass

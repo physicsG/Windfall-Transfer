@@ -6,14 +6,17 @@ import random
 import socket
 import struct
 import time
+from collections.abc import Iterable, Sequence
 
 GROUP, PORT = "224.0.0.251", 5353
 TYPE_A, TYPE_PTR, TYPE_SRV = 1, 12, 33
 # Service types a Mac usually advertises: any answer reveals its address on the link.
 QUESTIONS = ("_services._dns-sd._udp.local", "_smb._tcp.local", "_device-info._tcp.local")
 
+type Record = tuple[str, int, str | None]  # name, type, data
 
-def encode_name(name):
+
+def encode_name(name: str) -> bytes:
     out = b""
     for label in name.rstrip(".").split("."):
         raw = label.encode("utf-8")
@@ -21,14 +24,16 @@ def encode_name(name):
     return out + b"\0"
 
 
-def build_query(names, query_id):
+def build_query(names: Sequence[str], query_id: int) -> bytes:
     header = struct.pack("!HHHHHH", query_id, 0, len(names), 0, 0, 0)
     return header + b"".join(encode_name(name) + struct.pack("!HH", TYPE_PTR, 1) for name in names)
 
 
-def read_name(msg, offset):
+def read_name(msg: bytes, offset: int) -> tuple[str, int]:
     """Decode a (possibly compressed) DNS name; returns (name, offset just past it)."""
-    labels, end, jumps = [], None, 0
+    labels: list[str] = []
+    end: int | None = None
+    jumps = 0
     while True:
         if offset >= len(msg):
             raise ValueError("name runs past the end of the message")
@@ -48,7 +53,7 @@ def read_name(msg, offset):
         offset += length
 
 
-def parse_response(msg):
+def parse_response(msg: bytes) -> list[Record]:
     """Records of a DNS response as [(name, type, data)]: PTR and SRV data are names, A data is an IP."""
     if len(msg) < 12:
         raise ValueError("message too short")
@@ -58,7 +63,7 @@ def parse_response(msg):
     offset = 12
     for _ in range(questions):
         offset = read_name(msg, offset)[1] + 4
-    records = []
+    records: list[Record] = []
     for _ in range(answers + authorities + additionals):
         name, offset = read_name(msg, offset)
         rtype, _, _, length = struct.unpack_from("!HHIH", msg, offset)
@@ -66,6 +71,7 @@ def parse_response(msg):
         offset = start + length
         if offset > len(msg):
             raise ValueError("record runs past the end of the message")
+        data: str | None
         if rtype == TYPE_PTR:
             data = read_name(msg, start)[0]
         elif rtype == TYPE_SRV and length > 6:
@@ -78,7 +84,7 @@ def parse_response(msg):
     return records
 
 
-def friendly_name(records):
+def friendly_name(records: list[Record]) -> str | None:
     """The responder's name: its file-sharing name ("Alex's MacBook Pro") or else its host name."""
     for _, rtype, data in records:
         if rtype == TYPE_PTR and data and data.endswith("._smb._tcp.local"):
@@ -90,9 +96,9 @@ def friendly_name(records):
     return None
 
 
-def discover(local_ip, timeout=1.5, exclude=()):
+def discover(local_ip: str, timeout: float = 1.5, exclude: Iterable[str] = ()) -> dict[str, str | None]:
     """Ask the link that local_ip is on who is there. Returns {ip: name or None} for everyone who answered."""
-    found = {}
+    found: dict[str, str | None] = {}
     ignore = set(exclude) | {local_ip}
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
         sock.bind((local_ip, 0))
@@ -108,7 +114,7 @@ def discover(local_ip, timeout=1.5, exclude=()):
             sock.settimeout(remaining)
             try:
                 msg, (ip, _) = sock.recvfrom(9000)
-            except socket.timeout:
+            except TimeoutError:
                 break
             except ConnectionResetError:  # Windows reports ICMP "port unreachable" this way; keep listening
                 continue
