@@ -2,6 +2,10 @@
 
 Connect a Mac to a Windows PC with a USB-C cable and copy files with Explorer and Finder.
 
+This project started with a simple wish: copy media files from a Mac to a Windows PC over a USB cable. Thunderbolt
+and USB4 can do that out of the box, but I only had a regular USB-C cable around. With Windfall Transfer, the Mac's
+shared folders show up in File Explorer, and files copy at USB speed.
+
 - **Regular USB-C cable**: an Apple silicon Mac shows up as a USB network adapter (CDC-NCM, VID `05AC` PID `1905`)
   that Windows' own driver can't start. Windfall Transfer drives it through WinUSB and connects it to a
   [Wintun](https://www.wintun.net) adapter: this PC is `10.77.0.1`, the Mac gets `10.77.0.2`. A USB 2.0 cable
