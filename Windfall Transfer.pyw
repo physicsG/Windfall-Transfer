@@ -1,4 +1,4 @@
-"""Windfall Transfer: double-click to connect this PC and the Mac over a USB-C cable (asks for admin rights)."""
+"""Windfall Transfer's entry point."""
 
 import os
 import sys

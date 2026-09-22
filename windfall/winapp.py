@@ -28,11 +28,8 @@ def is_admin():
 
 
 def relaunch_as_admin(script, args=(), console=True):
-    """Start `script` again with administrator rights (Windows asks the user). False if that was refused.
-
-    console=True runs it in a console that stays open afterwards (for the command-line bridge);
-    console=False uses pythonw.exe, for the windowed app.
-    """
+    """Start `script` again with administrator rights, in a console that stays open or else with pythonw.exe.
+    False if that was refused."""
     exe = sys.executable
     if console:
         command = subprocess.list2cmdline([exe, script, *args])
@@ -73,7 +70,8 @@ def unpacked_folder():
     home = os.path.dirname(os.path.normpath(folder))
     program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
     expected = os.path.join(program_files, "Windfall Transfer")
-    return home if os.path.normcase(home) == os.path.normcase(expected) else None  # never anything else
+    # "Remove from this PC" deletes this folder, so accept nothing else.
+    return home if os.path.normcase(home) == os.path.normcase(expected) else None
 
 
 def legacy_unpacked_folder():

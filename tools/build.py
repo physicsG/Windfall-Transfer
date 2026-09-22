@@ -1,13 +1,8 @@
-"""Build a self-contained Windfall Transfer that runs on any 64-bit Windows 10/11 PC without Python installed:
-
-    dist/Windfall Transfer.exe    the one file to distribute: it carries the folder below and unpacks it on first start
-    build/Windfall Transfer/      the same app as a folder (Windfall Transfer.exe + runtime/ + app/), built first
+"""Build dist/Windfall Transfer.exe, a single self-contained exe, from build/Windfall Transfer/ (launcher, runtime/,
+app/). The runtime is a trimmed copy of the 64-bit python.org Python running this script; the launcher is compiled
+with the C# compiler that ships with Windows.
 
     python tools/build.py
-
-Nothing is downloaded. The Python runtime is a trimmed copy of the one running this script (a python.org 3.x,
-64-bit install): only the standard-library modules the app imports, compiled into a zip. The launcher is compiled
-with the C# compiler that ships with Windows (.NET Framework 4), and the icon is drawn here.
 """
 
 import hashlib
@@ -27,8 +22,6 @@ ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / "tools"
 STAGE = ROOT / "build" / "Windfall Transfer"
 SINGLE = ROOT / "dist" / "Windfall Transfer.exe"
-OLD_OUTPUTS = [ROOT / "dist" / "Connect App.exe", ROOT / "dist" / "Connect App", ROOT / "dist" / "Connect App.zip",
-               ROOT / "build" / "Connect App"]  # what builds made before the app was renamed to Windfall Transfer
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)  # zip entry dates, so unchanged builds get the same payload ID
 RUNTIME = STAGE / "runtime"
 APP = STAGE / "app"
@@ -49,22 +42,6 @@ RUNTIME_FILES = ["python.exe", "pythonw.exe", f"{TAG}.dll", "python3.dll", "vcru
 EXTENSION_DLLS = {"_ctypes": ["libffi-*.dll"], "_tkinter": ["tcl*.dll", "tk*.dll", "zlib1.dll"]}
 TCL_FOLDERS = ["tcl8.6", "tk8.6", "tcl8"]
 TCL_SKIP = shutil.ignore_patterns("demos", "tzdata")
-
-README = """Windfall Transfer: your Mac and this PC over a USB-C cable
-==========================================================
-
-1. Double-click "Windfall Transfer.exe" and allow the administrator prompt.
-2. Plug in the Mac (keep it awake and unlocked).
-   - Regular USB-C cable: click "Set up this PC" once when Windfall Transfer asks for it.
-   - Thunderbolt/USB4 cable in this PC's Thunderbolt port: nothing to set up.
-3. On the Mac, turn on File Sharing (the "Mac setup" tab shows how).
-4. Sign in on the "Shared folders" tab and open the Mac's folders in Explorer.
-
-To undo everything: "This PC" tab > "Remove from this PC...", then delete this folder.
-
-Needs 64-bit Windows 10 or 11. Includes Python (runtime\\LICENSE.txt), Tcl/Tk (runtime\\tcl\\*\\license.terms)
-and Wintun (app\\vendor\\wintun\\LICENSE.txt).
-"""
 
 
 def find_modules():
@@ -272,12 +249,8 @@ def main():
     copy_app()
     write_icon(APP / "app.ico")
     compile_launcher(STAGE / "Windfall Transfer.exe", APP / "app.ico", TOOLS / "launcher.manifest")
-    (STAGE / "READ ME.txt").write_text(README, encoding="utf-8")
     smoke_test(STAGE, "folder build")
     payload_id = build_single_exe(APP / "app.ico")
-    for old in OLD_OUTPUTS:
-        if not remove(old):
-            print(f"note: {old} (from an earlier build) is in use; delete it once Windfall Transfer is closed")
     size = sum(path.stat().st_size for path in STAGE.rglob("*") if path.is_file())
     print(f"{len(sources)} standard-library modules, {len(extensions)} extension modules: "
           f"{', '.join(sorted(path.name for path in extensions))}")

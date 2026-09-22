@@ -892,7 +892,7 @@ class App:
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    preview = "--preview" in argv  # show the window without admin rights or the bridge (for trying out the UI)
+    preview = "--preview" in argv  # the window without admin rights or the bridge
     if not preview and not winapp.is_admin():
         if not winapp.relaunch_as_admin(os.path.abspath(sys.argv[0]), argv, console=False):
             winapp.message_box("Windfall Transfer needs administrator rights to create its network adapter.",

@@ -1,8 +1,5 @@
-"""Spike: bring up the Mac's USB network functions over WinUSB and check whether macOS talks back.
-
-Needs WinUSB on the Mac's USB device (VID 05AC, PID 1905): Windfall Transfer's "Set up this PC" does that.
-Close Windfall Transfer first; only one program can use the device at a time.
-"""
+"""Diagnostic probe: bring up the Mac's USB network functions over WinUSB and report what the Mac sends and which
+ports answer."""
 
 import argparse
 import collections
@@ -211,8 +208,7 @@ def main():
         device = open_device(APPLE_VID, MAC_PID)
     except WinUsbError as e:
         print(f"Could not open the Mac's USB device: {e}")
-        print("Bind WinUSB to it first: Zadig > Options > List All Devices, untick 'Ignore Hubs or Composite "
-              "Parents', select 'Mac (Composite Parent)' (USB ID 05AC 1905), choose WinUSB, Replace Driver.")
+        print("Click 'Set up this PC' in Windfall Transfer first, then close it: only one program can use the device.")
         return 1
 
     functions, probes = [], []

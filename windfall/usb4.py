@@ -1,9 +1,6 @@
 """Thunderbolt/USB4 mode: watch for the network link Windows and macOS set up by themselves over a Thunderbolt or
-USB4 cable (Windows' "USB4(TM) P2P Network Adapter" <-> the Mac's "Thunderbolt Bridge"), and find the Mac on it.
-
-That link needs no bridge. This only finds the Mac's address (an address entered by the user, else a Bonjour
-answer on the link, else Windows' neighbor table) and measures the traffic.
-"""
+USB4 cable, find the Mac on it (the user's address, else a Bonjour answer, else Windows' neighbor table), and
+measure the traffic."""
 
 import logging
 import re
@@ -73,7 +70,6 @@ class Usb4Monitor:
             self._quit.wait(self.poll_seconds)
 
     def check(self, now=None):
-        """One polling round."""
         now = time.monotonic() if now is None else now
         adapter = next((i for i in self.net.interfaces() if ADAPTER.search(i.description)), None)
         if adapter is None or not adapter.connected:

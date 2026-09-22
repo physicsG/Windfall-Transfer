@@ -1,9 +1,4 @@
-"""Command-line bridge: gives Windows a network adapter that is wired to the Mac over the USB-C cable.
-
-Start it with "Start bridge.cmd" (or `python bridge.py`). It asks for administrator rights because it creates
-a network adapter. While it runs, this PC is 10.77.0.1 and the Mac gets 10.77.0.2 over DHCP. For the windowed
-version, run "Windfall Transfer.pyw".
-"""
+"""The bridge in a console, without the window. Ctrl+C stops it."""
 
 import argparse
 import logging

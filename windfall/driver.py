@@ -1,10 +1,5 @@
-"""Set up and remove the Mac's USB driver on this PC, without Zadig.
-
-"Set up" gives the Mac's USB device Microsoft's own WinUSB driver (winusb.inf, which ships with Windows and is
-signed by Microsoft): nothing is added to the driver store and no certificate is installed. "Remove" undoes that,
-and also cleans up what Zadig adds when it was used instead: its driver package and its self-made certificate.
-Installing and removing need administrator rights; listing doesn't.
-"""
+"""The Mac's USB driver: set up Windows' own WinUSB (winusb.inf, signed by Microsoft, so no driver package or
+certificate is added), and remove it again along with what Zadig adds."""
 
 import ctypes
 import ctypes.wintypes as wt
@@ -302,8 +297,8 @@ def _set_class(instance_id, class_guid):
 def install_winusb(instance_id):
     """Give one Mac Microsoft's WinUSB driver. Needs administrator rights. Returns True if Windows wants a restart.
 
-    winusb.inf only offers its driver to devices of its own class, so the device moves to that class first, just as
-    when picking "Universal Serial Bus devices > WinUsb Device" by hand in Device Manager. On failure it moves back.
+    winusb.inf only offers its driver to devices of its own class, so the device moves to that class first (and back
+    on failure).
     """
     original_class = _class_of(instance_id)
     moved = original_class != GUID_DEVCLASS_USBDEVICE
@@ -350,10 +345,8 @@ def _read_inf(path):
 
 
 def targets_mac_with_winusb(inf_text):
-    """True for a driver package that puts WinUSB on a Mac's whole USB device (as Zadig's does).
-
-    Zadig writes the ID through a string variable (DeviceID = "VID_05AC&PID_1905"), so match the pair itself.
-    """
+    """True for a driver package that puts WinUSB on a Mac's whole USB device, as Zadig's does. Zadig writes the ID
+    through a string variable (DeviceID = "VID_05AC&PID_1905"), so this matches the pair itself."""
     pids = re.findall(r"VID_05AC&PID_([0-9A-F]{4})(?![0-9A-F])(?!&MI_)", inf_text, re.IGNORECASE)
     return any(int(pid, 16) in KNOWN_MAC_PIDS for pid in pids) and re.search("winusb", inf_text, re.IGNORECASE)
 

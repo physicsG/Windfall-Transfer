@@ -1,8 +1,5 @@
-"""Windows file-sharing helpers: list a server's shared folders, sign in, and keep the password in Credential Manager.
-
-Credentials saved here are ordinary Windows credentials for the server's address, so Explorer uses them too and
-opens \\\\server without asking. Windows keeps them encrypted; this module never writes passwords anywhere else.
-"""
+"""Windows file sharing: list a server's shared folders, sign in, and keep the password in Credential Manager (as an
+ordinary credential for the server's address, which Explorer uses too)."""
 
 import ctypes
 import ctypes.wintypes as wt

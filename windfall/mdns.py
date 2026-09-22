@@ -1,9 +1,6 @@
-"""Just enough multicast DNS (Bonjour) to find the Mac on a link: send one query out of an adapter, see who answers.
-
-The query goes out from an ordinary port rather than 5353, which makes it a "legacy unicast" query: responders
-answer straight back to that port (RFC 6762, section 6.7). So nothing here listens on 5353, and Windows' own
-Bonjour/mDNS service is left alone.
-"""
+"""Just enough multicast DNS (Bonjour) to find the Mac on a link. The query goes out from an ordinary port, which makes
+it a "legacy unicast" query answered straight back to that port (RFC 6762, 6.7): nothing listens on 5353, so Windows'
+own mDNS service is left alone."""
 
 import random
 import socket
