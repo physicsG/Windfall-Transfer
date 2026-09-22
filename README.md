@@ -13,9 +13,12 @@ Connect a Mac to a Windows PC with a USB-C cable and copy files with Explorer an
 
 ## Use it (no Python needed)
 
-Copy the **`Connect App`** folder (or `Connect App.zip`, unpacked) to the PC, then:
+Copy **`Connect App.exe`** (one file, from `dist\`) to the PC, then:
 
-1. Double-click **`Connect App.exe`** and allow the administrator prompt.
+1. Double-click **`Connect App.exe`** and allow the administrator prompt. The first start of each version unpacks
+   the app into `C:\Program Files\Connect App` (a few seconds; only administrators can write there, so nothing
+   can tamper with the files the app runs with admin rights). If Windows SmartScreen warns about an unknown app
+   (the exe isn't code-signed), choose *More info* → *Run anyway*.
 2. Plug in the Mac (awake and unlocked). With a regular USB-C cable, click **Set up this PC** once when the app
    asks: it gives the Mac's USB device Microsoft's own WinUSB driver, which is part of Windows (nothing is
    downloaded, no certificate is added). Thunderbolt/USB4 cables need no setup.
@@ -30,8 +33,9 @@ Unplugging is fine: the bridge reconnects when the cable is back. **Connection s
 
 **To undo everything**: **This PC** tab → **Remove from this PC…**. That restores the Mac's standard USB driver,
 removes what Zadig added if it was used earlier (its driver package and certificate), deletes the Wintun driver
-unless another app such as Tailscale uses it, forgets saved Mac passwords, and deletes the app's settings
-(`%APPDATA%\ConnectApp`) and logs (`%LOCALAPPDATA%\ConnectApp`). Then delete the folder.
+unless another app such as Tailscale uses it, forgets saved Mac passwords, deletes the app's settings
+(`%APPDATA%\ConnectApp`), logs (`%LOCALAPPDATA%\ConnectApp`) and its unpacked copy in
+`C:\Program Files\Connect App`. Then delete `Connect App.exe`.
 
 Needs 64-bit Windows 10/11. Apple silicon Macs for USB cables; any Thunderbolt Mac for Thunderbolt/USB4 cables.
 
@@ -43,10 +47,13 @@ On a PC with a 64-bit [python.org](https://www.python.org) Python 3.13:
 python tools\build.py
 ```
 
-This writes `dist\Connect App\` and `dist\Connect App.zip` (about 18 MB / 8 MB): a trimmed private copy of that
-Python (only the standard-library modules the app imports, isolated from any other Python on the PC), the app,
-Wintun, and `Connect App.exe`, a small launcher compiled with the C# compiler that ships with Windows. It asks for
-administrator rights through its manifest. Nothing is downloaded.
+This writes **`dist\Connect App.exe`** (about 8 MB), the one file to distribute. It first builds the app as a
+folder in `build\Connect App\` (about 18 MB: a trimmed private copy of that Python with only the standard-library
+modules the app imports, isolated from any other Python on the PC; the app; Wintun; and a small launcher compiled
+with the C# compiler that ships with Windows, which asks for administrator rights through its manifest). The
+single exe embeds that folder and unpacks it on first start. The build checks both: it loads the app with the
+folder's runtime, and unpacks the single exe into a temporary folder and loads the app from there. Nothing is
+downloaded, and unchanged sources give the same version, so users don't unpack again.
 
 ## Develop
 
@@ -74,7 +81,7 @@ administrator rights through its manifest. Nothing is downloaded.
 | `connect_app/wintun.py` | Wintun + IP Helper bindings |
 | `connect_app/dhcp.py` | One-client DHCP server for the Mac |
 | `connect_app/packets.py` | Packet building and parsing helpers |
-| `tools/build.py`, `launcher.cs`, `launcher.manifest` | The self-contained build |
+| `tools/build.py`, `launcher.cs`, `launcher.manifest` | The self-contained build: folder, then the single exe |
 | `bridge.py`, `Start bridge.cmd`, `probe.py` | Console bridge and diagnostic probe |
 | `vendor/wintun/` | Wintun 0.14.1 `wintun.dll` (amd64, signed by WireGuard LLC) and its license |
 | `tests/` | Unit tests |

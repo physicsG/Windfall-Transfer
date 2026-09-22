@@ -1,5 +1,7 @@
-"""Build a self-contained Connect App: dist/Connect App/ and dist/Connect App.zip, which run on any 64-bit
-Windows 10/11 PC without Python installed.
+"""Build a self-contained Connect App that runs on any 64-bit Windows 10/11 PC without Python installed:
+
+    dist/Connect App.exe    the one file to distribute: it carries the folder below and unpacks it on first start
+    build/Connect App/      the same app as a folder (Connect App.exe + runtime/ + app/), built first
 
     python tools/build.py
 
@@ -8,6 +10,7 @@ Nothing is downloaded. The Python runtime is a trimmed copy of the one running t
 with the C# compiler that ships with Windows (.NET Framework 4), and the icon is drawn here.
 """
 
+import hashlib
 import modulefinder
 import os
 import py_compile
@@ -22,10 +25,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / "tools"
-DIST_PARENT = ROOT / "dist"
-DIST = DIST_PARENT / "Connect App"
-RUNTIME = DIST / "runtime"
-APP = DIST / "app"
+STAGE = ROOT / "build" / "Connect App"
+SINGLE = ROOT / "dist" / "Connect App.exe"
+OLD_OUTPUTS = [ROOT / "dist" / "Connect App", ROOT / "dist" / "Connect App.zip"]  # what earlier builds made
+FIXED_TIME = (2020, 1, 1, 0, 0, 0)  # zip entry dates, so unchanged builds get the same payload ID
+RUNTIME = STAGE / "runtime"
+APP = STAGE / "app"
 ENTRY = ROOT / "Connect App.pyw"
 BASE = Path(sys.base_prefix)
 STDLIB = BASE / "Lib"
@@ -82,13 +87,18 @@ def find_modules():
     return sources, extensions
 
 
+def _add(archive, name, data):
+    info = zipfile.ZipInfo(name, date_time=FIXED_TIME)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    archive.writestr(info, data, compresslevel=9)
+
+
 def write_stdlib_zip(sources):
-    with tempfile.TemporaryDirectory() as tmp, zipfile.ZipFile(RUNTIME / f"{TAG}.zip", "w",
-                                                                zipfile.ZIP_DEFLATED) as archive:
+    with tempfile.TemporaryDirectory() as tmp, zipfile.ZipFile(RUNTIME / f"{TAG}.zip", "w") as archive:
         for relative, path in sorted(sources.items()):
             compiled = Path(tmp) / "module.pyc"
             py_compile.compile(str(path), cfile=str(compiled), dfile=str(relative), doraise=True)
-            archive.write(compiled, relative.with_suffix(".pyc").as_posix())
+            _add(archive, relative.with_suffix(".pyc").as_posix(), compiled.read_bytes())
 
 
 def copy_runtime(extensions):
@@ -174,47 +184,103 @@ def write_icon(path, sizes=(16, 20, 24, 32, 40, 48, 64, 256)):
     path.write_bytes(struct.pack("<HHH", 0, 1, len(images)) + entries + b"".join(images))
 
 
-def build_launcher(icon):
+def compile_launcher(out, icon, manifest, payload=None, payload_id=None):
+    """The folder launcher, or with a payload the single-file one (ONEFILE: the payload is embedded)."""
     if not CSC.exists():
         raise SystemExit(f"C# compiler not found at {CSC} (part of Windows' .NET Framework 4)")
-    subprocess.run([str(CSC), "/nologo", "/target:winexe", "/optimize+",
-                    f"/win32manifest:{TOOLS / 'launcher.manifest'}", f"/win32icon:{icon}",
-                    f"/out:{DIST / 'Connect App.exe'}", "/reference:System.Windows.Forms.dll",
-                    str(TOOLS / "launcher.cs")], check=True)
+    command = [str(CSC), "/nologo", "/target:winexe", "/optimize+", "/platform:x64", f"/win32manifest:{manifest}",
+               f"/win32icon:{icon}", f"/out:{out}", "/reference:System.Windows.Forms.dll"]
+    sources = [str(TOOLS / "launcher.cs")]
+    if payload:
+        generated = payload.with_name("payload.cs")
+        generated.write_text(f'static class Payload {{ public const string Id = "{payload_id}"; }}\n',
+                             encoding="utf-8")
+        command += ["/define:ONEFILE", f"/resource:{payload},payload.zip", "/reference:System.IO.Compression.dll",
+                    "/reference:System.IO.Compression.FileSystem.dll"]
+        sources.append(str(generated))
+    subprocess.run(command + sources, check=True)
 
 
-def smoke_test():
-    """Import the app with the bundled runtime only (no window), to catch anything missing from the build."""
+def smoke_test(folder, label):
+    """Import the app with a bundled runtime only (no window), to catch anything missing from the build."""
     code = ("import tkinter, connect_app.gui, connect_app.driver, connect_app.usb4, connect_app.service; "
-            "print('bundled runtime OK: Python', __import__('sys').version.split()[0], "
-            "'Tcl', tkinter.Tcl().eval('info patchlevel'))")
+            "print('Python', __import__('sys').version.split()[0], 'Tcl', tkinter.Tcl().eval('info patchlevel'))")
     env = {key: value for key, value in os.environ.items() if not key.startswith(("PYTHON", "TCL_", "TK_"))}
-    result = subprocess.run([str(RUNTIME / "python.exe"), "-c", code], cwd=DIST, env=env, capture_output=True,
-                            text=True)
-    print(result.stdout.strip() or result.stderr.strip())
+    result = subprocess.run([str(folder / "runtime" / "python.exe"), "-c", code], cwd=folder, env=env,
+                            capture_output=True, text=True)
     if result.returncode:
-        raise SystemExit("the bundled runtime couldn't load the app")
+        raise SystemExit(f"{label}: the bundled runtime couldn't load the app\n{result.stderr.strip()}")
+    print(f"{label}: OK ({result.stdout.strip()})")
+
+
+def build_single_exe(icon):
+    """Embed runtime/ and app/ in one Connect App.exe, then check it unpacks and runs like on a fresh PC."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        payload = tmp / "payload.zip"
+        with zipfile.ZipFile(payload, "w") as archive:
+            for folder in (RUNTIME, APP):
+                for path in sorted(folder.rglob("*")):
+                    if path.is_file():
+                        _add(archive, path.relative_to(STAGE).as_posix(), path.read_bytes())
+        payload_id = hashlib.sha256(payload.read_bytes()).hexdigest()[:12]
+        built = tmp / "Connect App.exe"
+        compile_launcher(built, icon, TOOLS / "launcher.manifest", payload, payload_id)
+        # Same launcher without the admin requirement, so the check needs no prompt; it unpacks to a temp folder.
+        manifest = tmp / "check.manifest"
+        manifest.write_text((TOOLS / "launcher.manifest").read_text(encoding="utf-8")
+                            .replace("requireAdministrator", "asInvoker"), encoding="utf-8")
+        checker = tmp / "check.exe"
+        compile_launcher(checker, icon, manifest, payload, payload_id)
+        unpacked = tmp / "unpacked"
+        subprocess.run([str(checker), "--extract-only", str(unpacked)], check=True)
+        smoke_test(unpacked, "single-file exe, unpacked")
+        SINGLE.parent.mkdir(exist_ok=True)
+        staged = SINGLE.with_name(SINGLE.name + ".new")  # same drive as the target, so the swap is a rename
+        shutil.copy2(built, staged)
+        try:
+            os.replace(staged, SINGLE)
+        except PermissionError:
+            staged.unlink()
+            raise SystemExit(f"{SINGLE} is in use: close Connect App and build again") from None
+    return payload_id
+
+
+def remove(path):
+    """Delete a file or folder. False if it's in use (for example, Connect App is running from it)."""
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+        return True
+    except PermissionError:
+        return False
 
 
 def main():
     if sys.maxsize <= 2 ** 32 or not (BASE / f"{TAG}.dll").exists():
         raise SystemExit("run this with a 64-bit python.org Python installation")
-    if DIST.exists():
-        shutil.rmtree(DIST)
+    if not remove(STAGE):
+        raise SystemExit(f"{STAGE} is in use: close Connect App if it runs from there, then build again")
     RUNTIME.mkdir(parents=True)
     sources, extensions = find_modules()
     write_stdlib_zip(sources)
     copy_runtime(extensions)
     copy_app()
     write_icon(APP / "app.ico")
-    build_launcher(APP / "app.ico")
-    (DIST / "READ ME.txt").write_text(README, encoding="utf-8")
-    smoke_test()
-    archive = shutil.make_archive(str(DIST_PARENT / "Connect App"), "zip", root_dir=DIST_PARENT, base_dir=DIST.name)
-    size = sum(path.stat().st_size for path in DIST.rglob("*") if path.is_file())
+    compile_launcher(STAGE / "Connect App.exe", APP / "app.ico", TOOLS / "launcher.manifest")
+    (STAGE / "READ ME.txt").write_text(README, encoding="utf-8")
+    smoke_test(STAGE, "folder build")
+    payload_id = build_single_exe(APP / "app.ico")
+    for old in OLD_OUTPUTS:
+        if not remove(old):
+            print(f"note: {old} (from an earlier build) is in use; delete it once Connect App is closed")
+    size = sum(path.stat().st_size for path in STAGE.rglob("*") if path.is_file())
     print(f"{len(sources)} standard-library modules, {len(extensions)} extension modules: "
           f"{', '.join(sorted(path.name for path in extensions))}")
-    print(f"built {DIST} ({size / 1e6:.1f} MB) and {archive} ({Path(archive).stat().st_size / 1e6:.1f} MB)")
+    print(f"built {STAGE} ({size / 1e6:.1f} MB)")
+    print(f"built {SINGLE} ({SINGLE.stat().st_size / 1e6:.1f} MB, version {payload_id}): the file to distribute")
 
 
 if __name__ == "__main__":

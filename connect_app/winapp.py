@@ -64,6 +64,24 @@ def enable_dpi_awareness():
             pass
 
 
+def unpacked_folder():
+    """Program Files\\Connect App, if this copy was unpacked there by the single-file Connect App.exe."""
+    folder = os.environ.get("CONNECTAPP_UNPACKED")  # set by the launcher
+    if not folder:
+        return None
+    home = os.path.dirname(os.path.normpath(folder))
+    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
+    expected = os.path.join(program_files, "Connect App")
+    return home if os.path.normcase(home) == os.path.normcase(expected) else None  # never anything else
+
+
+def delete_after_exit(folder, seconds=5):
+    """Delete a folder shortly after this process exits (its own files stay in use until then)."""
+    subprocess.Popen(f'cmd.exe /d /c ping -n {seconds + 1} 127.0.0.1 >nul & rmdir /s /q "{folder}"',
+                     creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+                     close_fds=True)
+
+
 def set_app_id(app_id):
     try:
         _shell32.SetCurrentProcessExplicitAppUserModelID(ctypes.c_wchar_p(app_id))

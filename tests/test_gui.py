@@ -174,6 +174,14 @@ class GuiTests(unittest.TestCase):
         remove_all.assert_not_called()
         self.assertFalse(self.app.removing)
 
+        self.app.removing = True
+        with mock.patch.object(gui.winapp, "unpacked_folder", return_value=r"C:\Program Files\Connect App"), \
+                mock.patch.object(gui.messagebox, "askyesno", return_value=False) as ask:
+            self.app._confirm_remove(left)
+        text = ask.call_args[0][1]
+        self.assertIn(r"unpacked in C:\Program Files\Connect App", text)
+        self.assertIn("delete Connect App.exe", text)
+
     def test_settings_are_validated(self):
         self.app.mac_ip_var.set("10.78.0.2")
         self.app.save_settings()

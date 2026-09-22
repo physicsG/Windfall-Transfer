@@ -636,8 +636,12 @@ class App:
         items += ["delete the Wintun network driver, unless another app (such as Tailscale or WireGuard) uses it",
                   "forget the Mac passwords saved in Windows Credential Manager",
                   "delete Connect App's settings and logs"]
+        unpacked = winapp.unpacked_folder()
+        if unpacked:
+            items.append(f"delete the copy of Connect App unpacked in {unpacked}")
+        what = "Connect App.exe" if unpacked else "its folder"
         text = ("This undoes what Connect App changed on this PC:\n\n" + "\n".join(f"• {item}" for item in items)
-                + "\n\nConnect App closes afterwards, and then you can delete its folder. Continue?")
+                + f"\n\nConnect App closes afterwards, and then you can delete {what}. Continue?")
         if not messagebox.askyesno("Remove Connect App from this PC", text, icon="warning"):
             self.removing = False
             return
@@ -670,8 +674,9 @@ class App:
             return
         for line in result:
             log.info("removed: %s", line)
+        what = "Connect App.exe" if winapp.unpacked_folder() else "its folder"
         messagebox.showinfo("Connect App", "Removed from this PC:\n\n" + "\n".join(f"• {line}" for line in result)
-                            + "\n\nConnect App closes now; you can delete its folder.")
+                            + f"\n\nConnect App closes now; you can delete {what}.")
         self.delete_data_on_exit = True
         self.close()
 
@@ -865,6 +870,9 @@ class App:
         if self.delete_data_on_exit:  # after "Remove from this PC", once the log file is closed
             for folder in (os.path.dirname(app_settings.PATH), DATA_DIR):
                 shutil.rmtree(folder, ignore_errors=True)
+            unpacked = winapp.unpacked_folder()
+            if unpacked:
+                winapp.delete_after_exit(unpacked)  # this process runs from there until it exits
         self.root.destroy()
 
     def _report_exception(self, exc_type, value, tb):
