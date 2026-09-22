@@ -1,82 +1,80 @@
 # connect-app
 
-A network link between a Mac and this Windows PC over a plain USB-C cable (no Thunderbolt needed), so you
-can copy files with Explorer and Finder.
+Connect a Mac to a Windows PC with a USB-C cable and copy files with Explorer and Finder.
 
-When an Apple Silicon Mac is plugged into a PC's USB-C port, it shows up as a USB network adapter
-(CDC-NCM, VID `05AC` PID `1905`). Windows' built-in driver can't start it, because the Mac doesn't group its
-interfaces the way Windows expects. This app drives the device directly through WinUSB and connects it to a
-virtual network adapter ([Wintun](https://www.wintun.net)).
+- **Regular USB-C cable** (no Thunderbolt needed): when an Apple silicon Mac is plugged into a PC, it shows up as
+  a USB network adapter (CDC-NCM, VID `05AC` PID `1905`). Windows' built-in driver can't start it, because the Mac
+  doesn't group its interfaces the way Windows expects. Connect App drives the device itself through WinUSB and
+  connects it to a virtual network adapter ([Wintun](https://www.wintun.net)): this PC is `10.77.0.1`, the Mac
+  gets `10.77.0.2`. A USB 2.0 cable reaches about 35–40 MB/s.
+- **Thunderbolt / USB4 cable** in the PC's Thunderbolt port: Windows and macOS build that network link themselves
+  ("USB4(TM) P2P Network Adapter" ⇄ "Thunderbolt Bridge"), at 10–20+ Gbps. Connect App finds the Mac on it and
+  prefers it when both links are up.
 
-## One-time setup
+## Use it (no Python needed)
 
-1. **Python 3.10+** on Windows (only the standard library is used).
-2. **WinUSB for the Mac's USB device**: with the Mac plugged in, run [Zadig](https://zadig.akeo.ie) →
-   *Options* → tick *List All Devices*, untick *Ignore Hubs or Composite Parents* → pick
-   **Mac (Composite Parent)** (USB ID `05AC 1905`) → **WinUSB** → *Replace Driver*.
-   If the Mac then shows as "Unknown USB Device", unplug and replug the cable.
-3. **On the Mac**: System Settings → General → Sharing → turn on **File Sharing**. If Windows rejects your
-   password later, open File Sharing's ⓘ → *Options…* and tick your account under *Windows File Sharing*.
+Copy the **`Connect App`** folder (or `Connect App.zip`, unpacked) to the PC, then:
 
-## Use
+1. Double-click **`Connect App.exe`** and allow the administrator prompt.
+2. Plug in the Mac (awake and unlocked). With a regular USB-C cable, click **Set up this PC** once when the app
+   asks: it gives the Mac's USB device Microsoft's own WinUSB driver, which is part of Windows (nothing is
+   downloaded, no certificate is added). Thunderbolt/USB4 cables need no setup.
+3. On the Mac: System Settings → General → Sharing → **File Sharing**. If Windows rejects your password later,
+   open File Sharing's ⓘ → *Options…* and tick your account under *Windows File Sharing*. The **Mac setup** tab
+   ticks these steps off as they work.
+4. On the **Shared folders** tab, sign in with your Mac account name and password. Tick *Remember* to store them
+   in Windows Credential Manager, so Explorer opens the Mac without asking. Double-click a folder to open it.
 
-1. Plug in the cable and double-click **`Connect App.pyw`** (approve the admin prompt; the bridge creates
-   a network adapter called *Mac USB Link*). The bridge runs while the window is open.
-2. The Mac gets `10.77.0.2` automatically; this PC is `10.77.0.1`.
-3. On the **Shared folders** tab, sign in with your Mac account name and password. Tick *Remember* to store
-   them in Windows Credential Manager, so Explorer opens the Mac without asking. Double-click a folder to open
-   it in Explorer and copy files either way.
+Unplugging is fine: the bridge reconnects when the cable is back. **Connection settings** changes the addresses
+(and takes the Mac's Thunderbolt address if it isn't found automatically).
 
-**Thunderbolt / USB4 cables** (in this PC's Thunderbolt port) don't need the bridge: Windows and macOS build
-that network link themselves ("USB4(TM) P2P Network Adapter" on Windows, "Thunderbolt Bridge" on the Mac), at
-10–20+ Gbps. Connect App notices the link, finds the Mac on it (Bonjour, else Windows' neighbor table, else an
-address you enter under Connection settings), and uses it for the folder list, saved password and Explorer.
-When both links are up, it prefers Thunderbolt/USB4. Saved passwords are per address, so sign in once per link.
+**To undo everything**: **This PC** tab → **Remove from this PC…**. That restores the Mac's standard USB driver,
+removes what Zadig added if it was used earlier (its driver package and certificate), deletes the Wintun driver
+unless another app such as Tailscale uses it, forgets saved Mac passwords, and deletes the app's settings
+(`%APPDATA%\ConnectApp`) and logs (`%LOCALAPPDATA%\ConnectApp`). Then delete the folder.
 
-The **Mac setup** tab lists the one-time steps on the Mac and ticks them off as they work; **Connection
-settings** changes the addresses. Prefer a console? `Start bridge.cmd` runs the same bridge without a window
-(Ctrl+C stops it); then open **`\\10.77.0.2`** in Explorer yourself. Only one of the two can run at a time.
+Needs 64-bit Windows 10/11. Apple silicon Macs for USB cables; any Thunderbolt Mac for Thunderbolt/USB4 cables.
 
-Unplugging is fine: *Mac USB Link* shows as disconnected, and the bridge reconnects by itself when you plug
-the cable back in (the Mac gets the same address again). If the Mac stops responding without being unplugged,
-the bridge notices within 5 seconds of trying to send and reconnects.
+## Build it
 
-Speed is limited by the cable: USB 2.0 cables top out around 35–40 MB/s. The Mac supports 10 Gbps in this
-mode, so a USB 3.x cable should be much faster.
+On a PC with a 64-bit [python.org](https://www.python.org) Python 3.13:
 
-Options: `python bridge.py --windows-ip 10.77.0.1 --mac-ip 10.77.0.2 --prefix 24`. Log: `logs\bridge.log`.
+```
+python tools\build.py
+```
 
-## Diagnostics and tests
+This writes `dist\Connect App\` and `dist\Connect App.zip` (about 18 MB / 8 MB): a trimmed private copy of that
+Python (only the standard-library modules the app imports, isolated from any other Python on the PC), the app,
+Wintun, and `Connect App.exe`, a small launcher compiled with the C# compiler that ships with Windows. It asks for
+administrator rights through its manifest. Nothing is downloaded.
 
-`python probe.py` brings up both of the Mac's USB network functions for 40 seconds and reports what the Mac
-sends, whether it answers pings, and which TCP ports are reachable. It doesn't need admin rights (stop the
-bridge first; only one program can use the Mac's USB device at a time).
+## Develop
 
-`python -m unittest discover -s tests` runs the tests (no Mac or admin rights needed).
-`pythonw "Connect App.pyw" --preview` shows the window without starting the bridge.
-
-## Undo
-
-Device Manager → *Universal Serial Bus devices* → **Mac** → *Uninstall device*, tick *Attempt to remove the
-driver for this device*, then replug the cable. The Wintun adapter only exists while the bridge runs.
+- Run from source: `python "Connect App.pyw"` (asks for admin rights), or `pythonw "Connect App.pyw" --preview`
+  to see the window without the bridge.
+- Tests: `python -m unittest discover -s tests` (no Mac or admin rights needed).
+- `python probe.py` brings up the Mac's USB network functions for 40 seconds and reports what the Mac sends and
+  which ports answer. Stop the app first: only one program can use the Mac's USB device at a time.
+- `bridge.py` / `Start bridge.cmd` run the same bridge in a console (Ctrl+C stops it).
 
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `Connect App.pyw` | The app (window) |
-| `bridge.py`, `Start bridge.cmd` | The same bridge from a console |
-| `probe.py` | Diagnostic probe |
 | `connect_app/gui.py` | The window (Tkinter) |
 | `connect_app/service.py` | The bridge (USB network function ⇄ Wintun adapter, DHCP/ARP/NDP) and the service that reconnects it |
+| `connect_app/driver.py` | Set up / remove the Mac's USB driver (Microsoft's WinUSB via SetupAPI), and Zadig's leftovers |
 | `connect_app/usb4.py` | Thunderbolt/USB4 mode: watches for Windows' USB4 network adapter and finds the Mac on it |
 | `connect_app/netinfo.py`, `mdns.py` | Interface/address/neighbor tables (IP Helper); a one-shot Bonjour query |
 | `connect_app/smb.py` | Listing the Mac's shared folders, signing in, Credential Manager |
-| `connect_app/settings.py`, `winapp.py` | Settings file; elevation, single instance, DPI |
+| `connect_app/settings.py`, `winapp.py` | Settings file; elevation, single instance, DPI, taskbar identity |
 | `connect_app/winusb.py` | SetupAPI + WinUSB bindings (ctypes) |
 | `connect_app/ncm.py` | CDC-NCM class requests and NTB framing |
 | `connect_app/wintun.py` | Wintun + IP Helper bindings |
 | `connect_app/dhcp.py` | One-client DHCP server for the Mac |
 | `connect_app/packets.py` | Packet building and parsing helpers |
+| `tools/build.py`, `launcher.cs`, `launcher.manifest` | The self-contained build |
+| `bridge.py`, `Start bridge.cmd`, `probe.py` | Console bridge and diagnostic probe |
 | `vendor/wintun/` | Wintun 0.14.1 `wintun.dll` (amd64, signed by WireGuard LLC) and its license |
 | `tests/` | Unit tests |

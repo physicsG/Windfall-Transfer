@@ -10,16 +10,17 @@ import time
 
 from . import packets as pk
 from .dhcp import DhcpServer
+from .driver import APPLE_VID, KNOWN_MAC_PIDS
 from .ncm import NcmFunction, find_functions
 from .winusb import WinUsbError, open_device
 from .wintun import Wintun, add_ipv4_address, interface_index
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINTUN_DLL = os.path.join(ROOT, "vendor", "wintun", "wintun.dll")
-LOG_FILE = os.path.join(ROOT, "logs", "bridge.log")
+DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "ConnectApp")
+LOG_FILE = os.path.join(DATA_DIR, "logs", "bridge.log")  # outside the app folder, which may be read-only
 ADAPTER_NAME = "Mac USB Link"
 ADAPTER_GUID = "{6F6D2C1A-3B7E-4C55-9E1D-2A5C0FFEE0A1}"  # fixed, so Windows recognises the same network each time
-APPLE_VID, MAC_PID = 0x05AC, 0x1905
 
 log = logging.getLogger("bridge")
 
@@ -310,7 +311,7 @@ class BridgeService:
         self.waiting_reason = None
         while not self._quit.is_set():
             try:
-                return open_device(APPLE_VID, MAC_PID)
+                return self._open_mac()
             except WinUsbError as e:
                 if e.strerror != reason:
                     reason, since = e.strerror, time.monotonic()
@@ -319,6 +320,16 @@ class BridgeService:
                     reported = self.waiting_reason = reason
             self._quit.wait(poll_seconds)
         return None
+
+    @staticmethod
+    def _open_mac():
+        error = None
+        for pid in sorted(KNOWN_MAC_PIDS):
+            try:
+                return open_device(APPLE_VID, pid)
+            except WinUsbError as e:
+                error = e
+        raise error
 
     def _run_connection(self, device, session):
         """Bridge one USB connection to the Mac until it drops or the service stops."""

@@ -4,6 +4,7 @@ import ipaddress
 import logging
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -11,10 +12,11 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox, ttk
 
+from . import driver, smb, winapp
 from . import settings as app_settings
-from . import smb, winapp
-from .service import ADAPTER_NAME, LOG_FILE, BridgeService
+from .service import ADAPTER_NAME, DATA_DIR, LOG_FILE, ROOT, WINTUN_DLL, BridgeService
 from .usb4 import Usb4Monitor, speed_text
+from .wintun import Wintun
 
 log = logging.getLogger("bridge")
 
@@ -58,6 +60,7 @@ class _QueueHandler(logging.Handler):
 class App:
     POLL_MS = 400
     PORT_CHECK_SECONDS = 5.0
+    SETUP_CHECK_SECONDS = 3.0
 
     def __init__(self, root, start_bridge=None, usb4=None):
         self.root = root
@@ -80,6 +83,12 @@ class App:
         self.sign_in_error = None
         self.signed_in = None  # (Mac IP, user) of the session this app opened
         self.saved_user = smb.saved_user(self.settings["mac_ip"])
+        self.macs = []  # the Mac's USB device entries on this PC (driver.find_macs)
+        self.setup_checking = False
+        self.last_setup_check = 0.0
+        self.setup_busy = False
+        self.removing = False
+        self.delete_data_on_exit = False
         self._handlers = self._setup_logging()
         self._build()
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -93,6 +102,11 @@ class App:
     @property
     def connected(self):
         return self.link is not None
+
+    @property
+    def needs_setup(self):
+        """The Mac is plugged in by USB, but its USB device doesn't have the WinUSB driver yet."""
+        return any(mac.present and not mac.ready for mac in self.macs)
 
     @property
     def target_ip(self):
@@ -129,6 +143,12 @@ class App:
     def _build(self):
         root = self.root
         root.title("Connect App - Mac over USB-C")
+        icon = os.path.join(ROOT, "app.ico")  # drawn by tools/build.py for the packaged app
+        if os.path.exists(icon):
+            try:
+                root.iconbitmap(default=icon)
+            except tk.TclError:
+                pass
         self.scale = scale = root.winfo_fpixels("1i") / 96.0
         root.geometry(f"{int(820 * scale)}x{int(640 * scale)}")
         root.minsize(int(680 * scale), int(540 * scale))
@@ -156,11 +176,13 @@ class App:
         self.open_button.pack(side="right")
         self.start_button = ttk.Button(header, text="Start bridge", command=self.toggle_bridge)
         self.start_button.pack(side="right", padx=(0, 8))
+        self.setup_button = ttk.Button(header, text="Set up this PC", command=self.set_up)  # shown when needed
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True, padx=14, pady=(6, 14))
         notebook.add(self._build_shares(notebook), text="Shared folders")
         notebook.add(self._build_steps(notebook), text="Mac setup")
+        notebook.add(self._build_pc(notebook), text="This PC")
         notebook.add(self._build_settings(notebook), text="Connection settings")
         notebook.add(self._build_log(notebook), text="Log")
         self.notebook = notebook
@@ -241,6 +263,30 @@ class App:
                   wraplength=int(730 * self.scale)).pack(anchor="w", pady=(12, 0))
         return frame
 
+    def _build_pc(self, parent):
+        frame = ttk.Frame(parent, padding=12)
+        usb = ttk.LabelFrame(frame, text="USB cable: the Mac's USB driver", padding=10)
+        usb.pack(fill="x")
+        self.setup_var = tk.StringVar(value="Checking...")
+        ttk.Label(usb, textvariable=self.setup_var, wraplength=int(700 * self.scale)).pack(anchor="w")
+        self.setup_pc_button = ttk.Button(usb, text="Set up this PC", command=self.set_up)
+        self.setup_pc_button.pack(anchor="w", pady=(8, 0))
+        ttk.Label(usb, style="Hint.TLabel", wraplength=int(700 * self.scale),
+                  text="Setting up gives the Mac's USB device Microsoft's WinUSB driver, which is part of Windows. "
+                       "Nothing is downloaded and no certificate is added. Needed once per Mac, and only for "
+                       "USB cables: Thunderbolt/USB4 cables work without it.").pack(anchor="w", pady=(8, 0))
+
+        remove = ttk.LabelFrame(frame, text="Remove Connect App from this PC", padding=10)
+        remove.pack(fill="x", pady=(12, 0))
+        ttk.Label(remove, wraplength=int(700 * self.scale),
+                  text="Undoes everything Connect App changed on this PC, and what Zadig added if you used it: the "
+                       "Mac's USB driver, Zadig's driver package and certificate, the Wintun network driver (unless "
+                       "another app such as Tailscale uses it), saved Mac passwords, and Connect App's settings and "
+                       "logs. Then you can simply delete the Connect App folder.").pack(anchor="w")
+        self.remove_button = ttk.Button(remove, text="Remove from this PC...", command=self.remove_from_pc)
+        self.remove_button.pack(anchor="w", pady=(8, 0))
+        return frame
+
     def _build_settings(self, parent):
         frame = ttk.Frame(parent, padding=12)
         form = ttk.LabelFrame(frame, text="USB cable (through the bridge)", padding=10)
@@ -313,6 +359,7 @@ class App:
         self._drain_log()
         self._refresh()
         self._maybe_check_port()
+        self._maybe_check_setup()
         self.root.after(self.POLL_MS, self.poll)
 
     def _drain_log(self):
@@ -361,7 +408,31 @@ class App:
         self.open_folder_button.configure(state=ready if self.shares else "disabled")
         self.forget_button.configure(state="normal" if self.saved_user else "disabled")
         self.usb4_var.set(self._usb4_summary())
+        busy = self.setup_busy or self.removing
+        show_setup = self.needs_setup and not self.connected
+        if show_setup != bool(self.setup_button.winfo_manager()):
+            if show_setup:
+                self.setup_button.pack(side="right", padx=(0, 8))
+            else:
+                self.setup_button.pack_forget()
+        self.setup_button.configure(state="disabled" if busy else "normal")
+        self.setup_pc_button.configure(state="normal" if self.needs_setup and not busy else "disabled")
+        self.remove_button.configure(state="disabled" if busy or self.stopping else "normal")
+        if not busy:
+            self.setup_var.set(self._setup_summary())
         self._refresh_steps(service)
+
+    def _setup_summary(self):
+        present = [mac for mac in self.macs if mac.present]
+        if any(not mac.ready for mac in present):
+            return "The Mac is plugged in and needs a one-time setup: click Set up this PC."
+        if present:
+            hint = "" if self.connected else (" If it doesn't connect within a few seconds, unplug the cable and "
+                                              "plug it back in.")
+            return "Set up: the Mac's USB connection uses Windows' WinUSB driver." + hint
+        if any(mac.ready for mac in self.macs):
+            return "Set up. Plug the Mac in with a USB cable to connect."
+        return "Plug the Mac in with a USB cable. If it needs the one-time setup, the button below turns on."
 
     def _status(self, service):
         usb4 = self.usb4
@@ -380,6 +451,9 @@ class App:
         if usb4.state == Usb4Monitor.SEARCHING:
             return ("Thunderbolt/USB4 link is up; looking for the Mac...",
                     "If it isn't found, enter the Mac's address under Connection settings.", AMBER)
+        if self.needs_setup:
+            return ("The Mac needs a one-time setup on this PC",
+                    "Click Set up this PC: Windows' own WinUSB driver then handles the Mac's USB connection.", AMBER)
         if service is None or service.state == BridgeService.STOPPED:
             return "Bridge stopped", "Click Start bridge to connect to the Mac.", GREY
         if service.state == BridgeService.FAILED:
@@ -421,6 +495,8 @@ class App:
             self._set_step("cable", DONE, "Connected over USB, through the bridge.")
         elif usb4.state == Usb4Monitor.SEARCHING:
             self._set_step("cable", DONE, "Thunderbolt/USB4 cable connected.")
+        elif self.needs_setup:
+            self._set_step("cable", BUSY, "The Mac is plugged in; this PC needs its one-time setup (This PC tab).")
         elif state == BridgeService.WAITING:
             self._set_step("cable", BUSY, "Waiting for the Mac...")
         else:
@@ -497,6 +573,107 @@ class App:
                                  "then click Sign in.")
         elif changed and not is_open:
             self.folders_var.set("The Mac's File Sharing doesn't answer. See the Mac setup tab.")
+
+    def _maybe_check_setup(self):
+        if self.setup_checking or self.setup_busy or self.removing:
+            return
+        if time.monotonic() - self.last_setup_check < self.SETUP_CHECK_SECONDS:
+            return
+        self.setup_checking = True
+        self.last_setup_check = time.monotonic()
+        self._in_background(driver.find_macs, self._setup_checked)
+
+    def _setup_checked(self, macs):
+        self.setup_checking = False
+        if isinstance(macs, Exception):
+            log.debug("checking the Mac's USB driver failed: %s", macs)
+            return
+        self.macs = macs
+
+    # ---- set up / remove ----
+
+    def set_up(self):
+        targets = [mac.instance_id for mac in self.macs if mac.present and not mac.ready]
+        if not targets or self.setup_busy or self.removing:
+            return
+        self.setup_busy = True
+        self.setup_var.set("Setting up the Mac's USB driver...")
+        log.info("setting up the Mac's USB driver (Microsoft WinUSB) for %s", ", ".join(targets))
+        self._in_background(lambda: [driver.install_winusb(target) for target in targets], self._set_up_done)
+
+    def _set_up_done(self, result):
+        self.setup_busy = False
+        self.last_setup_check = 0.0  # look again right away
+        if isinstance(result, Exception):
+            log.error("setting up the Mac's USB driver failed: %s", result)
+            messagebox.showerror("Connect App", f"Setting up the Mac's USB driver failed:\n\n{result}")
+            return
+        log.info("the Mac's USB driver is set up")
+        if any(result):
+            messagebox.showinfo("Connect App", "The Mac's USB driver is set up. Windows asks for a restart to "
+                                               "finish it.")
+        if not (self.service and self.service.running):
+            self.start_bridge()
+
+    def remove_from_pc(self):
+        if self.removing or self.setup_busy:
+            return
+        self.removing = True  # blocks set up/remove until the user has answered
+        self._in_background(driver.leftovers, self._confirm_remove)
+
+    def _confirm_remove(self, left):
+        if isinstance(left, Exception):
+            self.removing = False
+            messagebox.showerror("Connect App", f"Couldn't check what to remove:\n\n{left}")
+            return
+        items = []
+        if left.devices:
+            items.append("give the Mac's USB connection back to Windows' standard driver")
+        if left.packages:
+            items.append(f"delete the driver package Zadig added ({', '.join(left.packages)})")
+        if left.certificates:
+            items.append("delete Zadig's certificate for the Mac from Windows' trusted certificates")
+        items += ["delete the Wintun network driver, unless another app (such as Tailscale or WireGuard) uses it",
+                  "forget the Mac passwords saved in Windows Credential Manager",
+                  "delete Connect App's settings and logs"]
+        text = ("This undoes what Connect App changed on this PC:\n\n" + "\n".join(f"• {item}" for item in items)
+                + "\n\nConnect App closes afterwards, and then you can delete its folder. Continue?")
+        if not messagebox.askyesno("Remove Connect App from this PC", text, icon="warning"):
+            self.removing = False
+            return
+        self.stop_bridge(then=self._remove_now)
+
+    def _remove_now(self):
+        addresses = self._mac_addresses()
+
+        def work():
+            done = driver.remove_all()
+            try:
+                if Wintun(WINTUN_DLL).delete_driver():
+                    done.append("deleted the Wintun network driver")
+                else:
+                    done.append("left the Wintun network driver in place (another app still uses it)")
+            except OSError as e:
+                done.append(f"left the Wintun network driver in place ({e})")
+            for address in addresses:
+                smb.forget_credentials(address)
+                smb.sign_out(address)
+            done.append("forgot the saved Mac passwords")
+            return done
+        self._in_background(work, self._removed)
+
+    def _removed(self, result):
+        self.removing = False
+        if isinstance(result, Exception):
+            log.error("removing from this PC failed: %s", result)
+            messagebox.showerror("Connect App", f"Removing didn't finish:\n\n{result}\n\nYou can try again.")
+            return
+        for line in result:
+            log.info("removed: %s", line)
+        messagebox.showinfo("Connect App", "Removed from this PC:\n\n" + "\n".join(f"• {line}" for line in result)
+                            + "\n\nConnect App closes now; you can delete its folder.")
+        self.delete_data_on_exit = True
+        self.close()
 
     # ---- actions ----
 
@@ -685,6 +862,9 @@ class App:
         for handler in self._handlers:
             root_logger.removeHandler(handler)
             handler.close()
+        if self.delete_data_on_exit:  # after "Remove from this PC", once the log file is closed
+            for folder in (os.path.dirname(app_settings.PATH), DATA_DIR):
+                shutil.rmtree(folder, ignore_errors=True)
         self.root.destroy()
 
     def _report_exception(self, exc_type, value, tb):
@@ -700,6 +880,7 @@ def main(argv=None):
             winapp.message_box("Connect App needs administrator rights to create its network adapter.", error=True)
         return
     winapp.enable_dpi_awareness()
+    winapp.set_app_id("ConnectApp.ConnectApp")  # own taskbar button and icon, not Python's
     instance = None if preview else winapp.single_instance()  # held until exit
     if not preview and instance is None:
         winapp.message_box("Connect App (or the command-line bridge) is already running.")

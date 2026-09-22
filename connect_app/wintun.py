@@ -36,6 +36,7 @@ class Wintun:
         for name, restype, argtypes in [
             ("WintunCreateAdapter", ctypes.c_void_p, [wt.LPCWSTR, wt.LPCWSTR, ctypes.POINTER(GUID)]),
             ("WintunCloseAdapter", None, [ctypes.c_void_p]),
+            ("WintunDeleteDriver", wt.BOOL, []),
             ("WintunGetAdapterLUID", None, [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint64)]),
             ("WintunGetRunningDriverVersion", wt.DWORD, []),
             ("WintunSetLogger", None, [_LOGGER]),
@@ -58,6 +59,10 @@ class Wintun:
     def driver_version(self):
         version = self._dll.WintunGetRunningDriverVersion()
         return f"{version >> 16}.{version & 0xFFFF}" if version else None
+
+    def delete_driver(self):
+        """Remove the Wintun driver from Windows, unless another app's adapter (Tailscale, WireGuard...) uses it."""
+        return bool(self._dll.WintunDeleteDriver())
 
     def create_adapter(self, name, tunnel_type, guid_text):
         guid = GUID.parse(guid_text)

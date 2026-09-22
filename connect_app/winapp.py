@@ -64,5 +64,12 @@ def enable_dpi_awareness():
             pass
 
 
+def set_app_id(app_id):
+    try:
+        _shell32.SetCurrentProcessExplicitAppUserModelID(ctypes.c_wchar_p(app_id))
+    except (AttributeError, OSError):
+        pass
+
+
 def message_box(text, title="Connect App", error=False):
     _user32.MessageBoxW(None, text, title, 0x10 if error else 0x40)  # MB_ICONERROR / MB_ICONINFORMATION
