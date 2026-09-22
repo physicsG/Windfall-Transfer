@@ -1,0 +1,77 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Set up the dev tools
+        run: python tools/setup_dev.py
+      - name: Lint
+        run: .venv/bin/ruff check --output-format github
+      - name: Check formatting
+        run: .venv/bin/ruff format --check
+      - name: Type-check
+        run: .venv/bin/mypy
+
+  # Kept apart from the checks, so the job that builds the exe runs no packages from PyPI.
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          architecture: x64
+      - name: Test
+        run: python -m unittest discover -s tests -v
+      - name: Build
+        shell: bash
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: python tools/build.py --version "$VERSION"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Windfall-Transfer
+          path: dist/Windfall Transfer.exe
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'release'
+    needs: [checks, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Windfall-Transfer
+      - name: Attach the exe to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          mv "Windfall Transfer.exe" Windfall-Transfer.exe
+          gh release upload "$TAG" Windfall-Transfer.exe --clobber

@@ -15,8 +15,9 @@ shared folders show up in File Explorer, and files copy at USB speed.
 
 ## Use it
 
-1. Run `Windfall Transfer.exe` (from `dist\`, see below) and allow the administrator prompt. It isn't code-signed:
-   if SmartScreen warns, choose *More info* → *Run anyway*.
+1. Download `Windfall-Transfer.exe` from the [latest release](https://github.com/physicsG/Windfall-Transfer/releases/latest),
+   run it and allow the administrator prompt. It isn't code-signed: if SmartScreen warns, choose *More info* →
+   *Run anyway*.
 2. Plug in the Mac, awake and unlocked. With a regular USB-C cable, click **Set up this PC** once when asked: it
    gives the Mac's USB device Windows' built-in WinUSB driver.
 3. On the Mac, turn on System Settings → General → Sharing → **File Sharing**. If Windows rejects your password,
@@ -37,10 +38,17 @@ python tools\build.py
 
 This writes `dist\Windfall Transfer.exe`, the one file to distribute: a launcher with the app, Wintun and a trimmed
 private copy of that Python embedded, unpacked to `C:\Program Files\Windfall Transfer` on first start.
+`--version 1.2.0` stamps a version into it. The build stops if any binary it packages isn't validly signed by the
+Python Software Foundation, Microsoft or (Wintun) WireGuard LLC.
+
+GitHub Actions checks, tests and builds every push to `main` and every pull request; the job that builds the exe
+installs nothing from PyPI. Publishing a release builds its tag and attaches `Windfall-Transfer.exe` to it.
 
 ## Develop
 
-`python tools\setup_dev.py` creates `.venv` with the dev tools pinned in `pyproject.toml`. Then:
+`python tools\setup_dev.py` creates `.venv` with the dev tools, installed only from `requirements-dev.txt`: exact
+versions, wheels only, every file checked against its hash. After changing a tool's version in `pyproject.toml`, run
+it with `--lock` first. Then:
 
 - Lint and format: `.venv\Scripts\ruff check` and `.venv\Scripts\ruff format`
 - Type-check: `.venv\Scripts\mypy`
