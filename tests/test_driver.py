@@ -1,6 +1,6 @@
 import unittest
 
-from connect_app import driver
+from windfall import driver
 
 # How Zadig (libwdi) writes its driver package for the Mac: the ID goes through a string variable.
 ZADIG_INF = r"""

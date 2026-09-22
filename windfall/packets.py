@@ -71,7 +71,7 @@ def neighbor_advert(our_mac, our_ip, dst_mac, dst_ip, solicited):
     return ethernet(dst_mac, our_mac, ETH_IPV6, packet)
 
 
-def echo6(our_mac, our_ip, dst_mac, dst_ip, ident, seq, reply=False, data=b"connect-app probe"):
+def echo6(our_mac, our_ip, dst_mac, dst_ip, ident, seq, reply=False, data=b"windfall-transfer probe"):
     body = struct.pack("!HH", ident, seq) + data
     packet = ipv6(our_ip, dst_ip, PROTO_ICMPV6, icmpv6(our_ip, dst_ip, 129 if reply else 128, 0, body))
     return ethernet(dst_mac, our_mac, ETH_IPV6, packet)
@@ -106,7 +106,7 @@ def udp4(src, dst, sport, dport, payload):
     return struct.pack("!HHHH", sport, dport, length, csum or 0xFFFF) + payload
 
 
-def echo4(our_mac, our_ip, dst_mac, dst_ip, ident, seq, reply=False, data=b"connect-app probe"):
+def echo4(our_mac, our_ip, dst_mac, dst_ip, ident, seq, reply=False, data=b"windfall-transfer probe"):
     body = struct.pack("!BBHHH", 0 if reply else 8, 0, 0, ident, seq) + data
     body = body[:2] + struct.pack("!H", checksum(body)) + body[4:]
     return ethernet(dst_mac, our_mac, ETH_IPV4, ipv4(our_ip, dst_ip, PROTO_ICMP, body))

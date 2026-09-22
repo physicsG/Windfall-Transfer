@@ -3,6 +3,7 @@
 import ctypes
 import ctypes.wintypes as wt
 import os
+import re
 import subprocess
 import sys
 
@@ -43,7 +44,7 @@ def relaunch_as_admin(script, args=(), console=True):
     return (result or 0) > 32
 
 
-def single_instance(name="Local\\ConnectAppBridge"):
+def single_instance(name="Local\\WindfallTransfer"):
     """A mutex handle if no other bridge is running in this session, else None. Hold it while running."""
     handle = _kernel32.CreateMutexW(None, False, name)
     if not handle:
@@ -65,14 +66,26 @@ def enable_dpi_awareness():
 
 
 def unpacked_folder():
-    """Program Files\\Connect App, if this copy was unpacked there by the single-file Connect App.exe."""
-    folder = os.environ.get("CONNECTAPP_UNPACKED")  # set by the launcher
+    """Program Files\\Windfall Transfer, if this copy was unpacked there by the single-file Windfall Transfer.exe."""
+    folder = os.environ.get("WINDFALL_UNPACKED")  # set by the launcher
     if not folder:
         return None
     home = os.path.dirname(os.path.normpath(folder))
     program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
-    expected = os.path.join(program_files, "Connect App")
+    expected = os.path.join(program_files, "Windfall Transfer")
     return home if os.path.normcase(home) == os.path.normcase(expected) else None  # never anything else
+
+
+def legacy_unpacked_folder():
+    """Program Files\\Connect App, if the app's earlier Connect App.exe unpacked itself there (and nothing else is)."""
+    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
+    folder = os.path.join(program_files, "Connect App")
+    try:
+        entries = os.listdir(folder)
+    except OSError:
+        return None
+    ours = re.compile(r"app-[0-9a-f]{12}(\.unpacking-[0-9a-f]{32})?")
+    return folder if entries and all(ours.fullmatch(entry) for entry in entries) else None
 
 
 def delete_after_exit(folder, seconds=5):
@@ -89,5 +102,5 @@ def set_app_id(app_id):
         pass
 
 
-def message_box(text, title="Connect App", error=False):
+def message_box(text, title="Windfall Transfer", error=False):
     _user32.MessageBoxW(None, text, title, 0x10 if error else 0x40)  # MB_ICONERROR / MB_ICONINFORMATION

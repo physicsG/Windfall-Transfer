@@ -1,4 +1,4 @@
-"""Connect App window: runs the bridge, watches for a Thunderbolt/USB4 link, and shows the Mac's shared folders."""
+"""Windfall Transfer's window: runs the bridge, watches for a Thunderbolt/USB4 link, shows the Mac's shared folders."""
 
 import ipaddress
 import logging
@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 
 from . import driver, smb, winapp
 from . import settings as app_settings
-from .service import ADAPTER_NAME, DATA_DIR, LOG_FILE, ROOT, WINTUN_DLL, BridgeService
+from .service import ADAPTER_NAME, DATA_DIR, LEGACY_DATA_DIR, LOG_FILE, ROOT, WINTUN_DLL, BridgeService
 from .usb4 import Usb4Monitor, speed_text
 from .wintun import Wintun
 
@@ -30,7 +30,7 @@ MAC_STEPS = [
      "this PC's Thunderbolt port gives the fastest link; any other USB-C cable works through the bridge."),
     ("address", "The Mac gets its address",
      "Happens by itself: through the bridge the Mac gets {mac_ip}; on Thunderbolt/USB4 it picks its own address "
-     "and Connect App finds it."),
+     "and Windfall Transfer finds it."),
     ("sharing", "Turn on File Sharing",
      "On the Mac: System Settings > General > Sharing > File Sharing."),
     ("account", "Allow your account for Windows",
@@ -142,7 +142,7 @@ class App:
 
     def _build(self):
         root = self.root
-        root.title("Connect App - Mac over USB-C")
+        root.title("Windfall Transfer - Mac over USB-C")
         icon = os.path.join(ROOT, "app.ico")  # drawn by tools/build.py for the packaged app
         if os.path.exists(icon):
             try:
@@ -276,13 +276,13 @@ class App:
                        "Nothing is downloaded and no certificate is added. Needed once per Mac, and only for "
                        "USB cables: Thunderbolt/USB4 cables work without it.").pack(anchor="w", pady=(8, 0))
 
-        remove = ttk.LabelFrame(frame, text="Remove Connect App from this PC", padding=10)
+        remove = ttk.LabelFrame(frame, text="Remove Windfall Transfer from this PC", padding=10)
         remove.pack(fill="x", pady=(12, 0))
         ttk.Label(remove, wraplength=int(700 * self.scale),
-                  text="Undoes everything Connect App changed on this PC, and what Zadig added if you used it: the "
-                       "Mac's USB driver, Zadig's driver package and certificate, the Wintun network driver (unless "
-                       "another app such as Tailscale uses it), saved Mac passwords, and Connect App's settings and "
-                       "logs. Then you can simply delete the Connect App folder.").pack(anchor="w")
+                  text="Undoes everything Windfall Transfer changed on this PC, and what Zadig added if you used it: "
+                       "the Mac's USB driver, Zadig's driver package and certificate, the Wintun network driver "
+                       "(unless another app such as Tailscale uses it), saved Mac passwords, and Windfall Transfer's "
+                       "settings and logs. Then you can simply delete Windfall Transfer.").pack(anchor="w")
         self.remove_button = ttk.Button(remove, text="Remove from this PC...", command=self.remove_from_pc)
         self.remove_button.pack(anchor="w", pady=(8, 0))
         return frame
@@ -306,7 +306,7 @@ class App:
 
         usb4 = ttk.LabelFrame(frame, text="Thunderbolt / USB4 cable (built into Windows and macOS)", padding=10)
         usb4.pack(fill="x", pady=(12, 0))
-        ttk.Label(usb4, text="Connect App finds the Mac on this link by itself.").grid(
+        ttk.Label(usb4, text="Windfall Transfer finds the Mac on this link by itself.").grid(
             row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(usb4, text="Mac's address").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.usb4_ip_var = tk.StringVar(value=self.settings["usb4_mac_ip"])
@@ -316,7 +316,7 @@ class App:
                   style="Hint.TLabel").grid(row=1, column=2, sticky="w", pady=(6, 0))
 
         self.autostart_var = tk.BooleanVar(value=self.settings["start_on_launch"])
-        ttk.Checkbutton(frame, text="Start the bridge when Connect App opens",
+        ttk.Checkbutton(frame, text="Start the bridge when Windfall Transfer opens",
                         variable=self.autostart_var).pack(anchor="w", pady=(12, 0))
         row = ttk.Frame(frame)
         row.pack(fill="x", pady=(10, 0))
@@ -606,11 +606,11 @@ class App:
         self.last_setup_check = 0.0  # look again right away
         if isinstance(result, Exception):
             log.error("setting up the Mac's USB driver failed: %s", result)
-            messagebox.showerror("Connect App", f"Setting up the Mac's USB driver failed:\n\n{result}")
+            messagebox.showerror("Windfall Transfer", f"Setting up the Mac's USB driver failed:\n\n{result}")
             return
         log.info("the Mac's USB driver is set up")
         if any(result):
-            messagebox.showinfo("Connect App", "The Mac's USB driver is set up. Windows asks for a restart to "
+            messagebox.showinfo("Windfall Transfer", "The Mac's USB driver is set up. Windows asks for a restart to "
                                                "finish it.")
         if not (self.service and self.service.running):
             self.start_bridge()
@@ -624,7 +624,7 @@ class App:
     def _confirm_remove(self, left):
         if isinstance(left, Exception):
             self.removing = False
-            messagebox.showerror("Connect App", f"Couldn't check what to remove:\n\n{left}")
+            messagebox.showerror("Windfall Transfer", f"Couldn't check what to remove:\n\n{left}")
             return
         items = []
         if left.devices:
@@ -635,17 +635,26 @@ class App:
             items.append("delete Zadig's certificate for the Mac from Windows' trusted certificates")
         items += ["delete the Wintun network driver, unless another app (such as Tailscale or WireGuard) uses it",
                   "forget the Mac passwords saved in Windows Credential Manager",
-                  "delete Connect App's settings and logs"]
+                  "delete Windfall Transfer's settings and logs"]
         unpacked = winapp.unpacked_folder()
         if unpacked:
-            items.append(f"delete the copy of Connect App unpacked in {unpacked}")
-        what = "Connect App.exe" if unpacked else "its folder"
-        text = ("This undoes what Connect App changed on this PC:\n\n" + "\n".join(f"• {item}" for item in items)
-                + f"\n\nConnect App closes afterwards, and then you can delete {what}. Continue?")
-        if not messagebox.askyesno("Remove Connect App from this PC", text, icon="warning"):
+            items.append(f"delete the copy of Windfall Transfer unpacked in {unpacked}")
+        if self._legacy_leftovers():
+            items.append("delete what the app left behind under its earlier name, Connect App")
+        what = "Windfall Transfer.exe" if unpacked else "its folder"
+        bullets = "\n".join(f"• {item}" for item in items)
+        text = (f"This undoes what Windfall Transfer changed on this PC:\n\n{bullets}\n\n"
+                f"Windfall Transfer closes afterwards, and then you can delete {what}. Continue?")
+        if not messagebox.askyesno("Remove Windfall Transfer from this PC", text, icon="warning"):
             self.removing = False
             return
         self.stop_bridge(then=self._remove_now)
+
+    @staticmethod
+    def _legacy_leftovers():
+        """Folders the app left under its earlier name, Connect App (settings, logs, unpacked copy)."""
+        folders = (app_settings.LEGACY_DIR, LEGACY_DATA_DIR, winapp.legacy_unpacked_folder())
+        return [folder for folder in folders if folder and os.path.isdir(folder)]
 
     def _remove_now(self):
         addresses = self._mac_addresses()
@@ -670,13 +679,14 @@ class App:
         self.removing = False
         if isinstance(result, Exception):
             log.error("removing from this PC failed: %s", result)
-            messagebox.showerror("Connect App", f"Removing didn't finish:\n\n{result}\n\nYou can try again.")
+            messagebox.showerror("Windfall Transfer", f"Removing didn't finish:\n\n{result}\n\nYou can try again.")
             return
         for line in result:
             log.info("removed: %s", line)
-        what = "Connect App.exe" if winapp.unpacked_folder() else "its folder"
-        messagebox.showinfo("Connect App", "Removed from this PC:\n\n" + "\n".join(f"• {line}" for line in result)
-                            + f"\n\nConnect App closes now; you can delete {what}.")
+        what = "Windfall Transfer.exe" if winapp.unpacked_folder() else "its folder"
+        bullets = "\n".join(f"• {line}" for line in result)
+        messagebox.showinfo("Windfall Transfer", f"Removed from this PC:\n\n{bullets}\n\n"
+                                                 f"Windfall Transfer closes now; you can delete {what}.")
         self.delete_data_on_exit = True
         self.close()
 
@@ -704,7 +714,7 @@ class App:
             self.service = BridgeService(self.settings["windows_ip"], self.settings["mac_ip"],
                                          self.settings["prefix"])
         except ValueError as e:
-            messagebox.showerror("Connect App", f"Check the connection settings: {e}")
+            messagebox.showerror("Windfall Transfer", f"Check the connection settings: {e}")
             return
         self.service.start()
 
@@ -813,7 +823,7 @@ class App:
         try:
             os.startfile(path)
         except OSError as e:
-            messagebox.showerror("Connect App", f"Couldn't open {path}: {e.strerror or e}")
+            messagebox.showerror("Windfall Transfer", f"Couldn't open {path}: {e.strerror or e}")
 
     def forget(self):
         addresses = self._mac_addresses()
@@ -868,7 +878,7 @@ class App:
             root_logger.removeHandler(handler)
             handler.close()
         if self.delete_data_on_exit:  # after "Remove from this PC", once the log file is closed
-            for folder in (os.path.dirname(app_settings.PATH), DATA_DIR):
+            for folder in (os.path.dirname(app_settings.PATH), DATA_DIR, *self._legacy_leftovers()):
                 shutil.rmtree(folder, ignore_errors=True)
             unpacked = winapp.unpacked_folder()
             if unpacked:
@@ -877,7 +887,7 @@ class App:
 
     def _report_exception(self, exc_type, value, tb):
         log.error("unexpected error in the window:\n%s", "".join(traceback.format_exception(exc_type, value, tb)))
-        messagebox.showerror("Connect App", f"Something went wrong: {value}\n\nDetails are in the log.")
+        messagebox.showerror("Windfall Transfer", f"Something went wrong: {value}\n\nDetails are in the log.")
 
 
 def main(argv=None):
@@ -885,13 +895,14 @@ def main(argv=None):
     preview = "--preview" in argv  # show the window without admin rights or the bridge (for trying out the UI)
     if not preview and not winapp.is_admin():
         if not winapp.relaunch_as_admin(os.path.abspath(sys.argv[0]), argv, console=False):
-            winapp.message_box("Connect App needs administrator rights to create its network adapter.", error=True)
+            winapp.message_box("Windfall Transfer needs administrator rights to create its network adapter.",
+                               error=True)
         return
     winapp.enable_dpi_awareness()
-    winapp.set_app_id("ConnectApp.ConnectApp")  # own taskbar button and icon, not Python's
+    winapp.set_app_id("WindfallTransfer.App")  # own taskbar button and icon, not Python's
     instance = None if preview else winapp.single_instance()  # held until exit
     if not preview and instance is None:
-        winapp.message_box("Connect App (or the command-line bridge) is already running.")
+        winapp.message_box("Windfall Transfer (or the command-line bridge) is already running.")
         return
     root = tk.Tk()
     App(root, start_bridge=False if preview else None)

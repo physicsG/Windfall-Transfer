@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from connect_app.ncm import NDP32, NTH32, NtbParameters, build_ntb16, parse_ntb
+from windfall.ncm import NDP32, NTH32, NtbParameters, build_ntb16, parse_ntb
 
 FRAMES = [bytes(range(60)), b"x" * 1514, b"y" * 101, b"z" * 16014]
 

@@ -1,12 +1,12 @@
 import struct
 import unittest
 
-from connect_app import packets as pk
-from connect_app.service import Bridge
+from windfall import packets as pk
+from windfall.service import Bridge
 
 WIN, MAC, MASK = bytes([10, 77, 0, 1]), bytes([10, 77, 0, 2]), bytes([255, 255, 255, 0])
-MAC_HW = bytes.fromhex("362520ea6f78")
-HOST_HW = bytes.fromhex("362520ea6f87")
+MAC_HW = bytes.fromhex("02000000000a")
+HOST_HW = bytes.fromhex("02000000000b")
 
 
 class FakeFunction:
@@ -69,7 +69,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_arp_answers_only_for_windows(self):
         self.bridge.from_mac(pk.arp(1, MAC_HW, MAC, bytes(6), WIN))
-        self.assertEqual(pk.inspect(self.fn.sent[-1])["text"], "ARP 10.77.0.1 is-at 36:25:20:ea:6f:87")
+        self.assertEqual(pk.inspect(self.fn.sent[-1])["text"], "ARP 10.77.0.1 is-at 02:00:00:00:00:0b")
         self.bridge.from_mac(pk.arp(1, MAC_HW, bytes(4), bytes(6), MAC))  # probe
         self.bridge.from_mac(pk.arp(1, MAC_HW, MAC, bytes(6), bytes([10, 77, 0, 9])))  # someone else
         self.assertEqual(len(self.fn.sent), 1)

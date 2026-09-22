@@ -2,7 +2,7 @@
 
 import unittest
 
-from connect_app import netinfo
+from windfall import netinfo
 
 LOOPBACK = "Software Loopback Interface 1"
 

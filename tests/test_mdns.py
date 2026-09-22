@@ -2,9 +2,9 @@ import socket
 import struct
 import unittest
 
-from connect_app import mdns
+from windfall import mdns
 
-INSTANCE = "Gordian's MacBook Pro"
+INSTANCE = "Alex's MacBook Pro"
 
 
 def smb_response():
@@ -18,7 +18,7 @@ def smb_response():
     msg += ptr_rdata
     srv_rdata = struct.pack("!HHH", 0, 0, 445)
     host_at = len(msg) + 2 + 10 + len(srv_rdata)
-    srv_rdata += mdns.encode_name("Gordians-MacBook-Pro.local")
+    srv_rdata += mdns.encode_name("Alexs-MacBook-Pro.local")
     msg += struct.pack("!H", 0xC000 | instance_at) + struct.pack("!HHIH", mdns.TYPE_SRV, 0x8001, 10, len(srv_rdata))
     msg += srv_rdata
     msg += struct.pack("!H", 0xC000 | host_at) + struct.pack("!HHIH", mdns.TYPE_A, 0x8001, 10, 4)
@@ -42,13 +42,13 @@ class MdnsTests(unittest.TestCase):
     def test_parses_compressed_records(self):
         self.assertEqual(mdns.parse_response(smb_response()), [
             ("_smb._tcp.local", mdns.TYPE_PTR, f"{INSTANCE}._smb._tcp.local"),
-            (f"{INSTANCE}._smb._tcp.local", mdns.TYPE_SRV, "Gordians-MacBook-Pro.local"),
-            ("Gordians-MacBook-Pro.local", mdns.TYPE_A, "169.254.21.56")])
+            (f"{INSTANCE}._smb._tcp.local", mdns.TYPE_SRV, "Alexs-MacBook-Pro.local"),
+            ("Alexs-MacBook-Pro.local", mdns.TYPE_A, "169.254.21.56")])
 
     def test_friendly_name_prefers_the_file_sharing_name(self):
         records = mdns.parse_response(smb_response())
         self.assertEqual(mdns.friendly_name(records), INSTANCE)
-        self.assertEqual(mdns.friendly_name(records[1:]), "Gordians-MacBook-Pro")
+        self.assertEqual(mdns.friendly_name(records[1:]), "Alexs-MacBook-Pro")
         self.assertIsNone(mdns.friendly_name([]))
 
     def test_ignores_queries_and_rejects_garbage(self):

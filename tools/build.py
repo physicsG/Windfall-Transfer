@@ -1,7 +1,7 @@
-"""Build a self-contained Connect App that runs on any 64-bit Windows 10/11 PC without Python installed:
+"""Build a self-contained Windfall Transfer that runs on any 64-bit Windows 10/11 PC without Python installed:
 
-    dist/Connect App.exe    the one file to distribute: it carries the folder below and unpacks it on first start
-    build/Connect App/      the same app as a folder (Connect App.exe + runtime/ + app/), built first
+    dist/Windfall Transfer.exe    the one file to distribute: it carries the folder below and unpacks it on first start
+    build/Windfall Transfer/      the same app as a folder (Windfall Transfer.exe + runtime/ + app/), built first
 
     python tools/build.py
 
@@ -25,13 +25,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / "tools"
-STAGE = ROOT / "build" / "Connect App"
-SINGLE = ROOT / "dist" / "Connect App.exe"
-OLD_OUTPUTS = [ROOT / "dist" / "Connect App", ROOT / "dist" / "Connect App.zip"]  # what earlier builds made
+STAGE = ROOT / "build" / "Windfall Transfer"
+SINGLE = ROOT / "dist" / "Windfall Transfer.exe"
+OLD_OUTPUTS = [ROOT / "dist" / "Connect App.exe", ROOT / "dist" / "Connect App", ROOT / "dist" / "Connect App.zip",
+               ROOT / "build" / "Connect App"]  # what builds made before the app was renamed to Windfall Transfer
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)  # zip entry dates, so unchanged builds get the same payload ID
 RUNTIME = STAGE / "runtime"
 APP = STAGE / "app"
-ENTRY = ROOT / "Connect App.pyw"
+ENTRY = ROOT / "Windfall Transfer.pyw"
 BASE = Path(sys.base_prefix)
 STDLIB = BASE / "Lib"
 DLLS = BASE / "DLLs"
@@ -49,12 +50,12 @@ EXTENSION_DLLS = {"_ctypes": ["libffi-*.dll"], "_tkinter": ["tcl*.dll", "tk*.dll
 TCL_FOLDERS = ["tcl8.6", "tk8.6", "tcl8"]
 TCL_SKIP = shutil.ignore_patterns("demos", "tzdata")
 
-README = """Connect App: your Mac and this PC over a USB-C cable
-=====================================================
+README = """Windfall Transfer: your Mac and this PC over a USB-C cable
+==========================================================
 
-1. Double-click "Connect App.exe" and allow the administrator prompt.
+1. Double-click "Windfall Transfer.exe" and allow the administrator prompt.
 2. Plug in the Mac (keep it awake and unlocked).
-   - Regular USB-C cable: click "Set up this PC" once when Connect App asks for it.
+   - Regular USB-C cable: click "Set up this PC" once when Windfall Transfer asks for it.
    - Thunderbolt/USB4 cable in this PC's Thunderbolt port: nothing to set up.
 3. On the Mac, turn on File Sharing (the "Mac setup" tab shows how).
 4. Sign in on the "Shared folders" tab and open the Mac's folders in Explorer.
@@ -118,7 +119,7 @@ def copy_runtime(extensions):
 
 
 def copy_app():
-    shutil.copytree(ROOT / "connect_app", APP / "connect_app", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "windfall", APP / "windfall", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(ROOT / "vendor", APP / "vendor")
     shutil.copy2(ENTRY, APP / ENTRY.name)
 
@@ -169,7 +170,8 @@ def _png(size, rows):
 
 def _dib(size, rows):
     header = struct.pack("<IiiHHIIiiII", 40, size, size * 2, 1, 32, 0, 0, 0, 0, 0, 0)
-    pixels = b"".join(bytes(value for i in range(0, len(row), 4) for value in (row[i + 2], row[i + 1], row[i], row[i + 3]))
+    pixels = b"".join(bytes(value for i in range(0, len(row), 4)
+                            for value in (row[i + 2], row[i + 1], row[i], row[i + 3]))  # RGBA -> BGRA
                       for row in reversed(rows))
     return header + pixels + bytes(((size + 31) // 32) * 4 * size)  # AND mask unused: alpha decides
 
@@ -203,7 +205,7 @@ def compile_launcher(out, icon, manifest, payload=None, payload_id=None):
 
 def smoke_test(folder, label):
     """Import the app with a bundled runtime only (no window), to catch anything missing from the build."""
-    code = ("import tkinter, connect_app.gui, connect_app.driver, connect_app.usb4, connect_app.service; "
+    code = ("import tkinter, windfall.gui, windfall.driver, windfall.usb4, windfall.service; "
             "print('Python', __import__('sys').version.split()[0], 'Tcl', tkinter.Tcl().eval('info patchlevel'))")
     env = {key: value for key, value in os.environ.items() if not key.startswith(("PYTHON", "TCL_", "TK_"))}
     result = subprocess.run([str(folder / "runtime" / "python.exe"), "-c", code], cwd=folder, env=env,
@@ -214,7 +216,7 @@ def smoke_test(folder, label):
 
 
 def build_single_exe(icon):
-    """Embed runtime/ and app/ in one Connect App.exe, then check it unpacks and runs like on a fresh PC."""
+    """Embed runtime/ and app/ in one Windfall Transfer.exe, then check it unpacks and runs like on a fresh PC."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         payload = tmp / "payload.zip"
@@ -224,7 +226,7 @@ def build_single_exe(icon):
                     if path.is_file():
                         _add(archive, path.relative_to(STAGE).as_posix(), path.read_bytes())
         payload_id = hashlib.sha256(payload.read_bytes()).hexdigest()[:12]
-        built = tmp / "Connect App.exe"
+        built = tmp / "Windfall Transfer.exe"
         compile_launcher(built, icon, TOOLS / "launcher.manifest", payload, payload_id)
         # Same launcher without the admin requirement, so the check needs no prompt; it unpacks to a temp folder.
         manifest = tmp / "check.manifest"
@@ -242,12 +244,12 @@ def build_single_exe(icon):
             os.replace(staged, SINGLE)
         except PermissionError:
             staged.unlink()
-            raise SystemExit(f"{SINGLE} is in use: close Connect App and build again") from None
+            raise SystemExit(f"{SINGLE} is in use: close Windfall Transfer and build again") from None
     return payload_id
 
 
 def remove(path):
-    """Delete a file or folder. False if it's in use (for example, Connect App is running from it)."""
+    """Delete a file or folder. False if it's in use (for example, Windfall Transfer is running from it)."""
     try:
         if path.is_dir():
             shutil.rmtree(path)
@@ -262,20 +264,20 @@ def main():
     if sys.maxsize <= 2 ** 32 or not (BASE / f"{TAG}.dll").exists():
         raise SystemExit("run this with a 64-bit python.org Python installation")
     if not remove(STAGE):
-        raise SystemExit(f"{STAGE} is in use: close Connect App if it runs from there, then build again")
+        raise SystemExit(f"{STAGE} is in use: close Windfall Transfer if it runs from there, then build again")
     RUNTIME.mkdir(parents=True)
     sources, extensions = find_modules()
     write_stdlib_zip(sources)
     copy_runtime(extensions)
     copy_app()
     write_icon(APP / "app.ico")
-    compile_launcher(STAGE / "Connect App.exe", APP / "app.ico", TOOLS / "launcher.manifest")
+    compile_launcher(STAGE / "Windfall Transfer.exe", APP / "app.ico", TOOLS / "launcher.manifest")
     (STAGE / "READ ME.txt").write_text(README, encoding="utf-8")
     smoke_test(STAGE, "folder build")
     payload_id = build_single_exe(APP / "app.ico")
     for old in OLD_OUTPUTS:
         if not remove(old):
-            print(f"note: {old} (from an earlier build) is in use; delete it once Connect App is closed")
+            print(f"note: {old} (from an earlier build) is in use; delete it once Windfall Transfer is closed")
     size = sum(path.stat().st_size for path in STAGE.rglob("*") if path.is_file())
     print(f"{len(sources)} standard-library modules, {len(extensions)} extension modules: "
           f"{', '.join(sorted(path.name for path in extensions))}")

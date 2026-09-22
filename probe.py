@@ -1,8 +1,7 @@
 """Spike: bring up the Mac's USB network functions over WinUSB and check whether macOS talks back.
 
-Needs WinUSB bound to the Mac's USB device (VID 05AC, PID 1905), e.g. with Zadig:
-Options > List All Devices, untick "Ignore Hubs or Composite Parents",
-pick "Mac (Composite Parent)", target WinUSB, Replace Driver.
+Needs WinUSB on the Mac's USB device (VID 05AC, PID 1905): Windfall Transfer's "Set up this PC" does that.
+Close Windfall Transfer first; only one program can use the device at a time.
 """
 
 import argparse
@@ -13,9 +12,9 @@ import sys
 import threading
 import time
 
-from connect_app import packets as pk
-from connect_app.ncm import NcmFunction, find_functions
-from connect_app.winusb import WinUsbError, open_device
+from windfall import packets as pk
+from windfall.ncm import NcmFunction, find_functions
+from windfall.winusb import WinUsbError, open_device
 
 APPLE_VID, MAC_PID = 0x05AC, 0x1905
 TCP_PORTS = {22: "SSH/Remote Login", 445: "SMB/File Sharing", 548: "AFP", 5000: "AirPlay", 7000: "AirPlay"}

@@ -6,12 +6,12 @@ import time
 import unittest
 from unittest import mock
 
-from connect_app import packets as pk
-from connect_app import service as service_module
-from connect_app.service import BridgeService
-from connect_app.winusb import WinUsbError
+from windfall import packets as pk
+from windfall import service as service_module
+from windfall.service import BridgeService
+from windfall.winusb import WinUsbError
 
-MAC_HW = bytes.fromhex("362520ea6f78")
+MAC_HW = bytes.fromhex("02000000000a")
 WIN, MAC = bytes([10, 77, 0, 1]), bytes([10, 77, 0, 2])
 
 
@@ -38,7 +38,7 @@ class FakeFunction:
 
     def __init__(self, device, control, data, name):
         self.n = device.n
-        self.host_mac = bytes.fromhex("362520ea6f87")
+        self.host_mac = bytes.fromhex("02000000000b")
         self.max_datagram = 1514
         self.notes = []
         self.aborted = threading.Event()

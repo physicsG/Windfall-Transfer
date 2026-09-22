@@ -6,10 +6,10 @@ import tkinter as tk
 import unittest
 from unittest import mock
 
-from connect_app import driver, gui, smb
-from connect_app import settings as app_settings
-from connect_app.service import BridgeService
-from connect_app.usb4 import Usb4Monitor
+from windfall import driver, gui, smb
+from windfall import settings as app_settings
+from windfall.service import BridgeService
+from windfall.usb4 import Usb4Monitor
 
 USB4_MAC = "169.254.21.56"
 
@@ -49,7 +49,8 @@ class GuiTests(unittest.TestCase):
         patches = [mock.patch.object(app_settings, "load", return_value=dict(app_settings.DEFAULTS)),
                    mock.patch.object(app_settings, "save"),
                    mock.patch.object(smb, "saved_user", side_effect=lambda ip: self.saved.get(ip)),
-                   mock.patch.object(gui, "LOG_FILE", os.path.join(self.dir.name, "bridge.log"))]
+                   mock.patch.object(gui, "LOG_FILE", os.path.join(self.dir.name, "bridge.log")),
+                   mock.patch.object(gui.App, "_legacy_leftovers", return_value=[])]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
@@ -85,23 +86,23 @@ class GuiTests(unittest.TestCase):
         self.show(FakeService(BridgeService.CONNECTED, mac_configured=True))
         self.app._port_checked("10.77.0.2", True)
         self.assertIn("Enter your Mac account name", self.app.folders_var.get())
-        self.app._listed(smb.SmbError(1326, "Wrong user name or password."), "10.77.0.2", "gordian", True, True)
+        self.app._listed(smb.SmbError(1326, "Wrong user name or password."), "10.77.0.2", "alex", True, True)
         self.assertEqual(self.app.account_var.get(), "Wrong user name or password.")
         self.app._refresh()
         self.assertEqual(self.app.step_marks["account"]["text"], gui.FAIL)
 
         self.app.password_var.set("secret")
-        self.app._listed([("Public", ""), ("gordian", "Home folder")], "10.77.0.2", "gordian", True, True)
-        self.assertEqual(self.app.tree.get_children(), ("Public", "gordian"))
+        self.app._listed([("Public", ""), ("alex", "Home folder")], "10.77.0.2", "alex", True, True)
+        self.assertEqual(self.app.tree.get_children(), ("Public", "alex"))
         self.assertEqual(self.app.password_var.get(), "", "password field is cleared after signing in")
         self.assertIn("saved in Windows Credential Manager", self.app.account_var.get())
         self.app._refresh()
         self.assertEqual(self.app.step_marks["folders"]["text"], gui.DONE)
-        self.assertEqual(self.app.settings["mac_user"], "gordian")
+        self.assertEqual(self.app.settings["mac_user"], "alex")
 
     def test_disconnect_clears_the_folder_list(self):
         self.show(FakeService(BridgeService.CONNECTED, mac_configured=True))
-        self.app._listed([("Public", "")], "10.77.0.2", "gordian", True, False)
+        self.app._listed([("Public", "")], "10.77.0.2", "alex", True, False)
         self.show(FakeService(BridgeService.WAITING))
         self.assertEqual(self.app.tree.get_children(), ())
         self.assertEqual(str(self.app.open_button["state"]), "disabled")
@@ -109,8 +110,8 @@ class GuiTests(unittest.TestCase):
     def test_thunderbolt_link_is_preferred_over_the_bridge(self):
         usb = FakeService(BridgeService.CONNECTED, mac_configured=True)
         self.show(usb)
-        self.app._listed([("Public", "")], "10.77.0.2", "gordian", True, False)
-        self.saved[USB4_MAC] = "gordian"
+        self.app._listed([("Public", "")], "10.77.0.2", "alex", True, False)
+        self.saved[USB4_MAC] = "alex"
         self.usb4.set(Usb4Monitor.FOUND, USB4_MAC)
         status, detail = self.show(usb)
         self.assertEqual(status, f"Connected over Thunderbolt/USB4 to the Mac at {USB4_MAC}")
@@ -118,7 +119,7 @@ class GuiTests(unittest.TestCase):
         self.assertIn("512.0 MB/s", detail)
         self.assertEqual(self.app.target_ip, USB4_MAC)
         self.assertEqual(self.app.tree.get_children(), (), "folders are listed again for the new connection")
-        self.assertEqual(self.app.account_var.get(), "Password saved for gordian.")
+        self.assertEqual(self.app.account_var.get(), "Password saved for alex.")
         self.assertIn("Thunderbolt/USB4 cable", self.app.step_notes["cable"]["text"])
         self.assertEqual(self.app._mac_addresses(), [USB4_MAC, "10.77.0.2"])
 
@@ -130,7 +131,7 @@ class GuiTests(unittest.TestCase):
         self.show(FakeService(BridgeService.CONNECTED, mac_configured=True))
         self.usb4.set(Usb4Monitor.FOUND, USB4_MAC)
         self.show(FakeService(BridgeService.CONNECTED, mac_configured=True))
-        self.app._listed([("Old", "")], "10.77.0.2", "gordian", True, False)
+        self.app._listed([("Old", "")], "10.77.0.2", "alex", True, False)
         self.assertEqual(self.app.tree.get_children(), ())
 
     def test_looking_for_the_mac_on_thunderbolt(self):
@@ -175,12 +176,18 @@ class GuiTests(unittest.TestCase):
         self.assertFalse(self.app.removing)
 
         self.app.removing = True
-        with mock.patch.object(gui.winapp, "unpacked_folder", return_value=r"C:\Program Files\Connect App"), \
+        with mock.patch.object(gui.winapp, "unpacked_folder", return_value=r"C:\Program Files\Windfall Transfer"), \
                 mock.patch.object(gui.messagebox, "askyesno", return_value=False) as ask:
             self.app._confirm_remove(left)
         text = ask.call_args[0][1]
-        self.assertIn(r"unpacked in C:\Program Files\Connect App", text)
-        self.assertIn("delete Connect App.exe", text)
+        self.assertIn(r"unpacked in C:\Program Files\Windfall Transfer", text)
+        self.assertIn("delete Windfall Transfer.exe", text)
+
+        self.app.removing = True
+        with mock.patch.object(gui.App, "_legacy_leftovers", return_value=[r"C:\Users\me\AppData\Roaming\ConnectApp"]), \
+                mock.patch.object(gui.messagebox, "askyesno", return_value=False) as ask:
+            self.app._confirm_remove(left)
+        self.assertIn("its earlier name, Connect App", ask.call_args[0][1])
 
     def test_settings_are_validated(self):
         self.app.mac_ip_var.set("10.78.0.2")

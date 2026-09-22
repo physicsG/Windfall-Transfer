@@ -2,7 +2,7 @@
 
 Start it with "Start bridge.cmd" (or `python bridge.py`). It asks for administrator rights because it creates
 a network adapter. While it runs, this PC is 10.77.0.1 and the Mac gets 10.77.0.2 over DHCP. For the windowed
-version, run "Connect App.pyw".
+version, run "Windfall Transfer.pyw".
 """
 
 import argparse
@@ -11,8 +11,8 @@ import os
 import sys
 import time
 
-from connect_app import winapp
-from connect_app.service import LOG_FILE, BridgeService
+from windfall import winapp
+from windfall.service import LOG_FILE, BridgeService
 
 log = logging.getLogger("bridge")
 
@@ -33,7 +33,7 @@ def main():
         return 0 if winapp.relaunch_as_admin(os.path.abspath(__file__), sys.argv[1:], console=True) else 1
     instance = winapp.single_instance()  # held until exit
     if instance is None:
-        print("The bridge is already running (in Connect App or another window).")
+        print("The bridge is already running (in Windfall Transfer or another window).")
         return 1
 
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)

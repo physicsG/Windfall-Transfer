@@ -380,7 +380,9 @@ def is_zadig_mac_certificate(subject):
 
 
 def _zadig_certificates(store_name, delete):
-    flags = CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG | (0 if delete else CERT_STORE_READONLY_FLAG)
+    flags = CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_OPEN_EXISTING_FLAG
+    if not delete:
+        flags |= CERT_STORE_READONLY_FLAG
     store = _CertOpenStore(ctypes.c_void_p(CERT_STORE_PROV_SYSTEM_W), 0, None, flags, ctypes.c_wchar_p(store_name))
     if not store:
         raise _error(f"open the {store_name} certificate store")

@@ -1,6 +1,6 @@
 import unittest
 
-from connect_app import packets as pk
+from windfall import packets as pk
 
 MAC = bytes.fromhex("020000000001")
 LL = pk.link_local(MAC)

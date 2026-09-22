@@ -1,7 +1,7 @@
 import unittest
 
-from connect_app.netinfo import Interface
-from connect_app.usb4 import Usb4Monitor, speed_text
+from windfall.netinfo import Interface
+from windfall.usb4 import Usb4Monitor, speed_text
 
 LOCAL, MAC = "169.254.77.10", "169.254.21.56"
 
@@ -54,12 +54,12 @@ class Usb4MonitorTests(unittest.TestCase):
             self.assertEqual(self.monitor.state, Usb4Monitor.SEARCHING)
             self.assertEqual(self.queries, [])
             self.net.addresses.append((LOCAL, 16, 42))
-            self.answers = {MAC: "Gordian's MacBook Pro"}
+            self.answers = {MAC: "Alex's MacBook Pro"}
             self.monitor.check(now=2)  # too soon to search again
             self.assertEqual(self.monitor.state, Usb4Monitor.SEARCHING)
             self.monitor.check(now=6)
         self.assertEqual((self.monitor.state, self.monitor.mac_ip, self.monitor.mac_name),
-                         (Usb4Monitor.FOUND, MAC, "Gordian's MacBook Pro"))
+                         (Usb4Monitor.FOUND, MAC, "Alex's MacBook Pro"))
         self.assertEqual(self.queries, [(LOCAL, {"127.0.0.1", LOCAL})])
         self.assertIn("found the Mac on Thunderbolt/USB4 at 169.254.21.56", "\n".join(logs.output))
         self.assertEqual(speed_text(self.monitor.link_speed), "20 Gbps")

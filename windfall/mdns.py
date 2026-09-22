@@ -82,7 +82,7 @@ def parse_response(msg):
 
 
 def friendly_name(records):
-    """The responder's name: its file-sharing name ("Gordian's MacBook Pro") or else its host name."""
+    """The responder's name: its file-sharing name ("Alex's MacBook Pro") or else its host name."""
     for _, rtype, data in records:
         if rtype == TYPE_PTR and data and data.endswith("._smb._tcp.local"):
             return data[:-len("._smb._tcp.local")]

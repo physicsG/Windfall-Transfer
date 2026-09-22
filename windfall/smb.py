@@ -125,7 +125,7 @@ def save_credentials(server, user, password):
     cred = CREDENTIALW()
     cred.Type = CRED_TYPE_DOMAIN_PASSWORD
     cred.TargetName = server
-    cred.Comment = "Mac over USB-C (Connect App)"
+    cred.Comment = "Mac over USB-C (Windfall Transfer)"
     cred.CredentialBlobSize = len(blob)
     cred.CredentialBlob = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))
     cred.Persist = CRED_PERSIST_LOCAL_MACHINE

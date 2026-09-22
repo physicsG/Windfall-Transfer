@@ -17,8 +17,9 @@ from .wintun import Wintun, add_ipv4_address, interface_index
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINTUN_DLL = os.path.join(ROOT, "vendor", "wintun", "wintun.dll")
-DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "ConnectApp")
+DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Windfall Transfer")
 LOG_FILE = os.path.join(DATA_DIR, "logs", "bridge.log")  # outside the app folder, which may be read-only
+LEGACY_DATA_DIR = os.path.join(os.path.dirname(DATA_DIR), "ConnectApp")  # logs under the earlier name, Connect App
 ADAPTER_NAME = "Mac USB Link"
 ADAPTER_GUID = "{6F6D2C1A-3B7E-4C55-9E1D-2A5C0FFEE0A1}"  # fixed, so Windows recognises the same network each time
 
@@ -262,7 +263,7 @@ class BridgeService:
             wintun = Wintun(self.wintun_dll, log=lambda level, message: log.log(
                 logging.WARNING if level else logging.DEBUG, "wintun: %s", message))
             log.info("creating network adapter '%s'...", ADAPTER_NAME)
-            adapter = wintun.create_adapter(ADAPTER_NAME, "ConnectApp", ADAPTER_GUID)
+            adapter = wintun.create_adapter(ADAPTER_NAME, "WindfallTransfer", ADAPTER_GUID)
             try:
                 add_ipv4_address(adapter.luid, self.windows_ip.packed, self.prefix)
                 index = interface_index(adapter.luid)
